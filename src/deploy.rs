@@ -73,23 +73,29 @@ fn scout(dst_cmps: &Vec<Component>) -> EndPtr {
         }
         else {
             return EndPtr {
-                ptr: i - 1,
+                ptr: i,
                 entity,
                 full: false,
             };
         }
     }
     EndPtr {
-        ptr: dst_cmps.len() - 1,
+        ptr: dst_cmps.len(),
         entity, 
         full: true,
     }
 }
 
 #[derive(Debug)]
-struct DeployError {
-     source : String,
-     message: String,
+pub struct DeployError {
+     pub source : String,
+     pub message: String,
+}
+
+impl DeployError {
+    fn locked(source: &'static str, message: &'static str) -> DeployError {
+        DeployError { source: String::from(source), message: String::from(message) }
+    }
 }
 
 impl convert::From<walkdir::Error> for DeployError {
@@ -126,10 +132,10 @@ fn copy_dir<P: AsRef<Path>, Q: AsRef<Path>>(src: P, dst: Q) -> Result<(), Deploy
 
 
 // Deploy from source to destination based on options
-pub fn deploy(src: PathBuf, src_ent: Entity, dst: PathBuf, opt: DepOpt) {
+pub fn deploy(src: PathBuf, src_ent: Entity, dst: PathBuf, opt: DepOpt) -> Result<(), DeployError> {
     if option_env!("JANN_MOSTLY_HARMLESS") == Some("1") {
         println!("{:?} => {:?}\n...as {:?}\n... with {:?}", src, dst, src_ent, opt);
-        return;
+        return Ok(());
     }
     let src_cmps: Vec<Component> = src.components().collect();
     let dst_cmps: Vec<Component> = dst.components().collect();
@@ -140,33 +146,33 @@ pub fn deploy(src: PathBuf, src_ent: Entity, dst: PathBuf, opt: DepOpt) {
         if viable {
             match &dst_ptr.entity {
                 Entity::FILE => {
-                    fs::remove_file(&dst).expect("Could not remove destination file");
+                    fs::remove_file(&dst)?; //.expect("Could not remove destination file");
                 },
                 Entity::DIR => {
-                    fs::remove_dir_all(&dst).expect("Could not remove destination directory");
+                    fs::remove_dir_all(&dst)?; //.expect("Could not remove destination directory");
                 }
             }
 
             match &src_ent {
                 Entity::FILE => {
-                    fs::copy(&src, &dst);
+                    fs::copy(&src, &dst)?;
                 },
                 Entity::DIR => {
-                    copy_dir(&src, &dst);
+                    copy_dir(&src, &dst)?;
                 }
             }
         }
     }
     else {
         if dst_ptr.entity == Entity::FILE {
-            if !opt.OW_FD { return; }
+            if !opt.OW_FD { return Err(DeployError::locked("Deploy", "Options disallow overwriting files with directories.")) }
 
             let mut ow_path = PathBuf::new();
             for c in dst_cmps.iter().take(dst_ptr.ptr) {
                 ow_path.push(c);
             }
             if ow_path.is_file() { // should always be true
-                fs::remove_file(&ow_path).expect("Could not remove clashing file"); 
+                fs::remove_file(&ow_path)?; //.expect("Could not remove clashing file"); 
             }
             else {
                 unreachable!();
@@ -175,20 +181,21 @@ pub fn deploy(src: PathBuf, src_ent: Entity, dst: PathBuf, opt: DepOpt) {
         let parent = dst.parent().unwrap();
         if !parent.is_dir() {
             if opt.INTER {
-                fs::create_dir_all(&parent);
+                fs::create_dir_all(&parent)?;
             }
             else {
-                return;
+                return Err(DeployError::locked("Deploy", "Options disallow creating intermediate directories"));
             }
         }
         match &src_ent {
             Entity::FILE => {
-                fs::copy(&src, &dst);
+                fs::copy(&src, &dst)?;
             },
             Entity::DIR => {
-                fs::create_dir(&dst);
-                copy_dir(&src, &dst);
+                fs::create_dir(&dst)?;
+                copy_dir(&src, &dst)?;
             }
         }
     }
+    Ok(())
 }

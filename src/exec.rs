@@ -5,35 +5,18 @@ use parse::PTNodeType;
 use std::process::Command;
 use std::path::{Path, PathBuf, Component};
 use std::env;
+use std::fs;
 
 use deploy;
 use invoke;
 use inter;
 use util;
+use parse;
 
-fn path_buf(s: &str) -> PathBuf {
-    Path::new(s).to_path_buf()
-}
-
-fn component_string(c: &Component) -> String {
-    c.as_os_str().to_string_lossy().to_string()
-}
-
-fn command<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
-                             symbols: &mut inter::Symbols<'src>,
-                             log: &mut util::Log<'src>,
-                             node: &inter::LinkNode<'inv, 'src>){
-    let shell = {
-        if let Some(inter::Value::Str(s)) = symbols.jnames.get("shell") {
-            s.to_owned()
-        }
-        else {
-            "/bin/sh".to_owned()
-        }
-    };
-
-    let com = node.token_value();
-
+fn interpolate<'inv, 'src: 'inv>(log: &mut util::Log<'src>,
+                                 symbols: &mut inter::Symbols<'src>,
+                                 node: &inter::LinkNode<'inv, 'src>) -> String {
+    let base = node.token_value();
     let NONE = 0;
     let LBRACE = 1;
     let RBRACE = 2;
@@ -41,10 +24,10 @@ fn command<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
     let mut esc = false;
     let mut ex = NONE;
 
-    let mut outcom: String = "".to_string();
+    let mut outstr: String = "".to_string();
     let mut name: String = "".to_string();
 
-    for c in com.chars() {
+    for c in base.chars() {
         if ex == RBRACE {
             if c != '}' {
                 panic!("Malformed command");
@@ -55,9 +38,14 @@ fn command<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
 
         if ex == WITHIN {
             if c == '}' {
-                let val = symbols.names.get(name.trim()).expect("No such variable");
+                let val = symbols.names.get(name.trim()).unwrap_or_else( || {
+                    symbols.jnames.get(name.trim()).unwrap_or_else( || {
+                        log.terminal(&format!("No such variable {}", name),
+                                     "Ensure interpolation uses extant, in-scope variables", &node.tok);
+                    })
+                });
                 if let inter::Value::Str(ref v) = val  {
-                    outcom.push_str(v);
+                    outstr.push_str(v);
                 }
                 else {
                     panic!("Only strings can be interpolated into commansd");
@@ -77,7 +65,7 @@ fn command<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
             }
             else {
                 ex = NONE;
-                outcom.push_str("{");
+                outstr.push_str("{");
             }
         
         }
@@ -93,11 +81,32 @@ fn command<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
 
         if esc { esc = false; }
 
-        outcom.push(c);
+        outstr.push(c);
     }
 
-    println!("\n>>> {}", outcom);
+    outstr
+}
 
+
+fn component_string(c: &Component) -> String {
+    c.as_os_str().to_string_lossy().to_string()
+}
+
+fn command<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
+                             symbols: &mut inter::Symbols<'src>,
+                             log: &mut util::Log<'src>,
+                             node: &inter::LinkNode<'inv, 'src>){
+    let shell = {
+        if let Some(inter::Value::Str(s)) = symbols.jnames.get("shell") {
+            s.to_owned()
+        }
+        else {
+            "/bin/sh".to_owned()
+        }
+    };
+
+    let outcom = interpolate(log, symbols, node);
+    println!("\n>>> {}", outcom);
     
     let mut proc = Command::new(&shell)
         .arg("-c")
@@ -112,6 +121,7 @@ fn execute_stmts<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
                                    symbols: &mut inter::Symbols<'src>,
                                    log: &mut util::Log<'src>,
                                    stmts: Vec<&inter::LinkNode<'inv, 'src>>) {
+    let mut scope_names : Vec<&'src str> = vec![];
     for node in stmts {
         match node.ptn.nt {
             PTNodeType::ASSIGN => {
@@ -119,6 +129,7 @@ fn execute_stmts<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
                 let lval = &node.children()[0];
                 if inter::check_name(lval.token_value()) {
                     if lval.is_type(&PTNodeType::NAME) {
+                        scope_names.push(lval.token_value());
                         symbols.names.insert(lval.token_value(), rval);
                     }
                     else if lval.is_type(&PTNodeType::JNAME) {
@@ -134,7 +145,7 @@ fn execute_stmts<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
             },
             PTNodeType::COPY | PTNodeType::INSERT => {
                 let deploy_children = &node.children();
-                let src_buf = path_buf(deploy_children[0].token_value());
+                let src_buf = PathBuf::from(interpolate(log, symbols, &deploy_children[0]));
 
                 let comps: Vec<Component> = src_buf.components().collect();
 
@@ -153,11 +164,11 @@ fn execute_stmts<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
                 let full_src = inv.root.join(&src_buf);
 
                 if !full_src.exists() {
-                    log.terminal("No entity at source path",
+                    log.terminal(&format!("No entity at source path: {:?}", full_src),
                                  "Make this a valid path", &deploy_children[0].tok);
                 }
                 
-                let mut dst_buf = path_buf(deploy_children[1].token_value());
+                let mut dst_buf = PathBuf::from(interpolate(log, symbols, &deploy_children[1]));
 
                 let dst_cpy = dst_buf.clone();
                 let dst_comps: Vec<Component> = dst_cpy.components().collect();
@@ -178,6 +189,15 @@ fn execute_stmts<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
                     dst_buf
                 };
 
+                if !dst_buf.components().all(|c| match c {
+                    Component::CurDir | Component::ParentDir => false,
+                    _ => true,
+                }) {
+                    log.terminal(&format!("Invalid destination path {:?}", dst_buf),
+                                 "Ensure path is absolute",
+                                 &deploy_children[1].tok);
+                }
+
                 match node.ptn.nt {
                     PTNodeType::INSERT => {
                         let entity = if let Some(parent) = src_buf.parent() {
@@ -186,21 +206,30 @@ fn execute_stmts<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
                         else {
                             &src_buf
                         };
-                        dst_buf = dst_buf.join(entity);
+                        dst_buf = PathBuf::from("/").join(dst_buf.join(entity));
                     },
                     _ => (),
                 }
 
-                if full_src.is_file() {
-                    deploy::deploy(full_src, deploy::Entity::FILE, dst_buf, inv.opts);
+                if let Err(result) = {
+                    if full_src.is_file() {
+                        deploy::deploy(full_src, deploy::Entity::FILE, dst_buf, inv.opts)
+                    }
+                    else {
+                        deploy::deploy(full_src, deploy::Entity::DIR, dst_buf, inv.opts)
+                    }
+                } {
+                    log.terminal(&format!("Deployment error: [{}] {}", &result.source, &result.message),
+                                          "Modify this line appropriately", &node.tok);
                 }
-                else {
-                    deploy::deploy(full_src, deploy::Entity::DIR, dst_buf, inv.opts);
-                }
+
             },
             PTNodeType::BLOCK   => { execute_block(inv, symbols, log, node); },
             _ => { continue; },
         }
+    }
+    for name in scope_names.iter() {
+        symbols.names.remove(name);
     }
 }
 

@@ -515,7 +515,7 @@ fn parse_val_stmt(parser: &mut Parser) -> Option<usize> {
     
     if !parser.has_cur() {
         parser.retreat();
-        parser.error("Bare value", "Cannot conclude here");
+        parser.error("Bare Value", "Cannot conclude here");
         return None;
     }
 
@@ -532,20 +532,20 @@ fn parse_val_stmt(parser: &mut Parser) -> Option<usize> {
         TokenType::EQUALS => {
             let stmt = parser.orphan(PTNodeType::ASSIGN, tok_id);
             parser.tree.bind_child(stmt, val);
-            parser.step_or_err("Bare equals", "Cannot conclude here")?;
-            let rval = parse_val(parser)?;
-            parser.tree.bind_child(stmt, rval);
-            Some(stmt)
-        },
-        TokenType::DARROW => {
-            let stmt = parser.orphan(PTNodeType::COPY, tok_id);
-            parser.tree.bind_child(stmt, val);
-            parser.step_or_err("Bare Double Arrow", "Cannot conclude here")?;
+            parser.step_or_err("Bare Equals", "Cannot conclude here")?;
             let rval = parse_val(parser)?;
             parser.tree.bind_child(stmt, rval);
             Some(stmt)
         },
         TokenType::AARROW => {
+            let stmt = parser.orphan(PTNodeType::COPY, tok_id);
+            parser.tree.bind_child(stmt, val);
+            parser.step_or_err("Bare Copy Arrow", "Cannot conclude here")?;
+            let rval = parse_val(parser)?;
+            parser.tree.bind_child(stmt, rval);
+            Some(stmt)
+        },
+        TokenType::DARROW => {
             let stmt = parser.orphan(PTNodeType::INSERT, tok_id);
             parser.tree.bind_child(stmt, val);
             parser.step_or_err("Bare Insertion Arrow", "Cannot conclude here")?;
