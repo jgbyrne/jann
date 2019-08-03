@@ -1,21 +1,28 @@
 extern crate walkdir;
+extern crate dirs;
 
 use parse::PTNodeType;
 use std::process::Command;
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf, Component};
+use std::env;
 
 use deploy;
 use invoke;
 use inter;
-
+use util;
 
 fn path_buf(s: &str) -> PathBuf {
     Path::new(s).to_path_buf()
 }
 
-fn command<'old, 'src: 'old>(inv: &invoke::Invocation<'src>,
+fn component_string(c: &Component) -> String {
+    c.as_os_str().to_string_lossy().to_string()
+}
+
+fn command<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
                              symbols: &mut inter::Symbols<'src>,
-                             node: &inter::LinkNode<'old, 'src>){
+                             log: &mut util::Log<'src>,
+                             node: &inter::LinkNode<'inv, 'src>){
     let shell = {
         if let Some(inter::Value::Str(s)) = symbols.jnames.get("shell") {
             s.to_owned()
@@ -101,9 +108,10 @@ fn command<'old, 'src: 'old>(inv: &invoke::Invocation<'src>,
     if !proc.wait().expect("failed to wait on process").success() { println!("Command ended with non-zero status") }
 }
 
-fn execute_stmts<'old, 'src: 'old>(inv: &invoke::Invocation<'src>,
+fn execute_stmts<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
                                    symbols: &mut inter::Symbols<'src>,
-                                   stmts: Vec<&inter::LinkNode<'old, 'src>>) {
+                                   log: &mut util::Log<'src>,
+                                   stmts: Vec<&inter::LinkNode<'inv, 'src>>) {
     for node in stmts {
         match node.ptn.nt {
             PTNodeType::ASSIGN => {
@@ -118,46 +126,98 @@ fn execute_stmts<'old, 'src: 'old>(inv: &invoke::Invocation<'src>,
                     }
                 }
                 else {
-                    panic!("Bad LVAL"); 
+                    log.terminal("Invalid variable name", "Make this a valid name", &lval.tok);
                 }
             },
             PTNodeType::COMMAND => {
-                command(inv, symbols, node);
+                command(inv, symbols, log, node);
             },
-            PTNodeType::COPY => {
-                let cpy_children = &node.children();
-                let src_buf = path_buf(cpy_children[0].token_value());
-                let dst_buf = path_buf(cpy_children[1].token_value());
-                if src_buf.is_file() {
-                    deploy::deploy(src_buf, deploy::Entity::FILE, dst_buf, inv.opts);
+            PTNodeType::COPY | PTNodeType::INSERT => {
+                let deploy_children = &node.children();
+                let src_buf = path_buf(deploy_children[0].token_value());
+
+                let comps: Vec<Component> = src_buf.components().collect();
+
+                if comps.len() == 0 {
+                    log.terminal("Source path is empty (this should not be allowed by the parser)",
+                                 "Put a path here and then please file a bug report!",
+                                 &deploy_children[0].tok);
+                }
+
+                if !comps.iter().all(|&c| match c { Component::Normal(_) => true, _ => false }) {
+                    log.terminal("Invalid source path",
+                                 "Remove any expansions and ensure path is relative to Jannfile",
+                                 &deploy_children[0].tok);
+                }
+                
+                let full_src = inv.root.join(&src_buf);
+
+                if !full_src.exists() {
+                    log.terminal("No entity at source path",
+                                 "Make this a valid path", &deploy_children[0].tok);
+                }
+                
+                let mut dst_buf = path_buf(deploy_children[1].token_value());
+
+                let dst_cpy = dst_buf.clone();
+                let dst_comps: Vec<Component> = dst_cpy.components().collect();
+             
+                if dst_comps.len() == 0 {
+                    log.terminal("Destination path is empty (this should not be allowed by the parser)",
+                                 "Put a path here and then please file a bug report!",
+                                 &deploy_children[1].tok);
+
+                }
+
+                dst_buf = if let Ok(dst_tail) = dst_buf.strip_prefix("~") {
+                    dirs::home_dir().unwrap_or_else( || {
+                        log.sys_terminal("Could not find home directory");
+                    }).join(dst_tail)
                 }
                 else {
-                    deploy::deploy(src_buf, deploy::Entity::DIR, dst_buf, inv.opts);
+                    dst_buf
+                };
+
+                match node.ptn.nt {
+                    PTNodeType::INSERT => {
+                        let entity = if let Some(parent) = src_buf.parent() {
+                            src_buf.strip_prefix(parent).unwrap()
+                        }
+                        else {
+                            &src_buf
+                        };
+                        dst_buf = dst_buf.join(entity);
+                    },
+                    _ => (),
+                }
+
+                if full_src.is_file() {
+                    deploy::deploy(full_src, deploy::Entity::FILE, dst_buf, inv.opts);
+                }
+                else {
+                    deploy::deploy(full_src, deploy::Entity::DIR, dst_buf, inv.opts);
                 }
             },
-            PTNodeType::INSERT => {
-                let ins_children = &node.children();
-                //insert(dir, path_buf(ins_children[0].tok.val.slice()), path_buf(ins_children[1].tok.val.slice()));
-            },
-            PTNodeType::BLOCK   => { execute_block(inv, symbols, node); },
+            PTNodeType::BLOCK   => { execute_block(inv, symbols, log, node); },
             _ => { continue; },
         }
     }
 }
 
-pub fn execute_block<'old, 'src: 'old>(inv: &invoke::Invocation<'src>,
+pub fn execute_block<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
                                        symbols: &mut inter::Symbols<'src>,
-                                       node: &inter::LinkNode<'old, 'src>) {
+                                       log: &mut util::Log<'src>,
+                                       node: &inter::LinkNode<'inv, 'src>) {
     let mut block_children = node.children();
     let tag = &block_children[0];
 
     match tag.ptn.nt {
         PTNodeType::NAME => {
             if inter::check_name(tag.token_value()) {
-                execute_stmts(inv, symbols, block_children.iter().skip(1).collect());
+                execute_stmts(inv, symbols, log, block_children.iter().skip(1).collect());
             }
             else {
-                panic!("Bad blocktag");
+                log.terminal("Invalid Block Name", "Choose a valid name for this block", &tag.tok);
             }
         },
         PTNodeType::MAP  => {
@@ -168,20 +228,22 @@ pub fn execute_block<'old, 'src: 'old>(inv: &invoke::Invocation<'src>,
                 if inter::check_name(name) {
                     for elem in vlist {
                         symbols.names.insert(name, elem);
-                        execute_stmts(inv, symbols, block_children.iter().skip(1).collect());
+                        execute_stmts(inv, symbols, log, block_children.iter().skip(1).collect());
                     }
                     symbols.names.remove(name);
                 }
                 else {
-                    panic!("Bad Name");
+                    log.terminal("Invalid Map Variable Name", 
+                                 "Choose a valid name for this variable", &map_children[1].tok);
                 }
             }
             else {
-                panic!("Left side must be list");
+                log.terminal("Left side of Map must be a list",
+                             "Replace this value with a list", &map_children[0].tok);
             }
             let name  = &node.children()[1];
             
         },
-        _ => { panic!{"Invalid block tag"} },
+        _ => { log.terminal("Invalid Block Tag", "Replace this with a name or a mapping", &tag.tok); },
     }
 }

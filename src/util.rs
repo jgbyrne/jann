@@ -54,4 +54,10 @@ impl<'src> Log<'src> {
         self.err_count += 1;
         self.conclude();
     }
+
+    pub fn sys_terminal(&mut self, msg: &str) -> ! {
+        println!("error: {}", msg);
+        self.err_count += 1;
+        self.conclude();
+    }
 }

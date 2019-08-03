@@ -2,6 +2,7 @@ use parse::{ParseTree, ParseTreeNode, PTNodeType, Token, TokenType};
 use inter;
 use exec;
 use deploy;
+use util;
 
 use std::fs;
 use std::env;
@@ -100,17 +101,23 @@ pub struct Invocation<'src> {
 }
 
 
-impl<'src> Invocation<'src> {
-    pub fn invoke(self) {
-        let cwd = env::current_dir().expect("Could not get cwd.");
+impl<'inv, 'src: 'inv> Invocation<'src> {
+    pub fn invoke(self, log: &'inv mut util::Log<'src>) {
+        let cwd = env::current_dir().unwrap_or_else( | _ | {
+            log.sys_terminal("Could not get cwd.");
+        });
 
         if !self.edir.exists() {
-            fs::create_dir_all(&self.edir).expect("Unable to create execution dir");
+            fs::create_dir_all(&self.edir).unwrap_or_else( | _ | {
+                log.sys_terminal("Unable to create execution dir");
+            });
         }
 
-        if env::set_current_dir(&self.edir).is_err() {
-            panic!("Could not change CWD!");
-        }
+        env::set_current_dir(&self.edir).unwrap_or_else( | _ | {
+            log.sys_terminal(
+                &format!("Could not change working directory to {:?}.", &self.edir)
+            );
+        });
 
         let mut symbols = inter::Symbols::new();
 
@@ -128,12 +135,15 @@ impl<'src> Invocation<'src> {
                     // Find Pipeline requested by invocation 
                     if child.is_type(&PTNodeType::PIPELINE) {
                         let pl_children = child.children();
+
                         if *pl_children[0].token_value() == self.pl_name {
                             let pl_list = &pl_children[1];
+
                             for stage in pl_list.children() {
                                 stage.expect_type(&PTNodeType::NAME);
                                 let name = stage.tok.val.slice();
                                 //check_name(name);
+                                
                                 stages.push(PipelineStage {
                                     name: name.to_string(),
                                     state: RunState::NOTRUN,
@@ -156,12 +166,12 @@ impl<'src> Invocation<'src> {
         };
         
         for PipelineStage { name: ref st_name, state: ref mut st_state } in &mut pipe.stages {
-            println!("{} {:?}", st_name, st_state);
             match *st_state {
                 RunState::NOTRUN => {
+                    println!("Executing pipeline stage '{}'...", st_name);
                     let block_id = *symbols.blocks.get(st_name.as_str()).unwrap();
                     let mut node: inter::LinkNode = self.art.node(block_id);
-                    exec::execute_block(&self, &mut symbols, &node);
+                    exec::execute_block(&self, &mut symbols, log, &node);
                     /*
                     if let Some(es) = end_stage {
                         if *es == *st_name {
@@ -186,10 +196,10 @@ impl<'src> Invocation<'src> {
             *st_state = RunState::DONE;
         }
         
-        pipe.dump(self.edir.join(self.pl_name));
+        pipe.dump(self.edir.join(&self.pl_name));
         
-        if env::set_current_dir(&cwd).is_err() {
-            panic!("Could not change CWD!");
-        }
+        env::set_current_dir(&cwd).unwrap_or_else( | _ | { 
+            log.sys_terminal("Could not change CWD!");
+        });
     }
 }
