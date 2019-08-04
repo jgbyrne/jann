@@ -106,7 +106,7 @@ fn command<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
     };
 
     let outcom = interpolate(log, symbols, node);
-    println!("\n>>> {}", outcom);
+    println!(">>> {}", outcom);
     
     let mut proc = Command::new(&shell)
         .arg("-c")

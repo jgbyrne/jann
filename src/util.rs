@@ -35,11 +35,11 @@ impl<'src> Log<'src> {
 
     pub fn conclude(&self) -> ! {
         if self.err_count == 0 {
-            println!("[{}] success", self.job);
+            println!("\n[{}] success", self.job);
             process::exit(0);
         }
         else {
-            println!("[{}] failed", self.job);
+            println!("\n[{}] failed", self.job);
             process::exit(1);
         }
     }

@@ -35,28 +35,31 @@ impl Pipeline {
                                  inv: &Invocation<'src>,
                                  symbols: &mut inter::Symbols<'src>,
                                  log: &mut util::Log<'src>,
+                                 tab: usize,
                                  ) {
-        println!("Executing pipeline '{}'", &flow.lines[pl_self].name);
+        let tabs = "\t".repeat(tab);
+        println!("[Execute] {}{}", tabs, &flow.lines[pl_self].name);
         for st_index in 0..flow.lines[pl_self].stages.len() {
             if !flow.lines[pl_self].stages[st_index].enabled {
-                println!("Ignoring disabled stage '{}'...", flow.lines[pl_self].stages[st_index].name);
+                println!("[ Ignore] {} : {}", tabs, flow.lines[pl_self].stages[st_index].name);
                 continue;
             }
 
             if let Some(ptr) = flow.lines[pl_self].stages[st_index].pl_ptr {
-                Pipeline::execute(flow, ptr, inv, symbols, log);
+                println!("[Running] {} | {}", tabs, flow.lines[pl_self].stages[st_index].name);
+                Pipeline::execute(flow, ptr, inv, symbols, log, tab + 1);
             }
             else {
                 let name = &flow.lines[pl_self].stages[st_index].name;
                 match flow.lines[pl_self].stages[st_index].state {
                     RunState::NOTRUN => {
-                        println!("Executing pipeline stage '{}'...", name);
+                        println!("[Execute] {} | {}", tabs, name);
                         let block_id = *symbols.blocks.get(name.as_str()).unwrap();
                         let mut node: inter::LinkNode = inv.art.node(block_id);
                         exec::execute_block(inv, symbols, log, &node);
                     },
                     RunState::DONE   => {
-                        println!("Already done stage '{}', skipping...", name);
+                        println!("[   Done] {} * {}", tabs, name);
                     },
                 }
             }
@@ -78,7 +81,7 @@ impl Workflow {
 
     fn execute<'inv, 'src: 'inv>(&mut self, inv: &Invocation<'src>, symbols: &mut inter::Symbols<'src>, log: &mut util::Log<'src>) {
         let mut main_line = self.index.get(&inv.pl_name).unwrap();
-        Pipeline::execute(self, *main_line, inv, symbols, log);
+        Pipeline::execute(self, *main_line, inv, symbols, log, 0);
     }
 }
 
