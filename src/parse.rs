@@ -59,6 +59,7 @@ pub enum TokenType {
     COMMA ,   // ,
     BANG  ,   // !
     PIPE  ,   // |
+    COLON ,   // :
     ERR   ,
 }
 
@@ -123,6 +124,7 @@ pub fn tokenise<'src>(log: &mut util::Log, lno: usize, init_id: &mut usize, inpu
                     ',' => Some(TokenType::COMMA ),
                     '!' => Some(TokenType::BANG  ),
                     '|' => Some(TokenType::PIPE  ),
+                    ':' => Some(TokenType::COLON  ),
                     _   => None, 
                 };
 
@@ -259,6 +261,7 @@ pub enum PTNodeType {
     COPY   ,
     EXEC   ,
     PIPELINE,
+    FLAG    ,
 }
 
 #[derive(Debug)]
@@ -553,19 +556,33 @@ fn parse_val_stmt(parser: &mut Parser) -> Option<usize> {
             parser.tree.bind_child(stmt, rval);
             Some(stmt)
         },
-        TokenType::PIPE => {
+        TokenType::PIPE | TokenType::COLON => {
+            let mut enabled = match cur_tt { TokenType::PIPE => true,
+                                             TokenType::COLON => false,
+                                             _ => unreachable!() };
+            let mut bar_tok_id = tok_id;
             let stmt = parser.orphan(PTNodeType::PIPELINE, tok_id);
             parser.tree.bind_child(stmt, val);
-            parser.step_or_err("Bare Pipe", "Cannot conclude here")?;
+            parser.step_or_err("Bare pipeline symbol", "Cannot conclude here")?;
             let stages = parser.orphan(PTNodeType::LIST, tok_id);
             loop {
                 let stage = parse_val(parser)?;
                 parser.tree.bind_child(stages, stage);
+                if enabled {
+                    let stage_enabled = parser.orphan(PTNodeType::FLAG, bar_tok_id);
+                    parser.tree.bind_child(stage, stage_enabled);
+                }
                 if !parser.has_cur() { break; }
+                bar_tok_id = parser.tok_id();
                 match parser.tok().tt {
                     TokenType::PIPE => {
-                        parser.step_or_err("Bare Pipe", "Cannot conclude here")?;
-                    }
+                        enabled = true;
+                        parser.step_or_err("Bare enabled pipe", "Cannot conclude here")?;
+                    },
+                    TokenType::COLON => {
+                        enabled = false;
+                        parser.step_or_err("Bare disabled pipe", "Cannot conclude here")?;
+                    },
                     _ => { break; }
                 }
             }

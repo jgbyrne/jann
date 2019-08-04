@@ -7,6 +7,7 @@ use util;
 use std::fs;
 use std::env;
 use std::path::PathBuf;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 enum RunState {
@@ -17,7 +18,9 @@ enum RunState {
 #[derive(Debug)]
 struct PipelineStage {
     name: String,
+    enabled: bool,
     state: RunState,
+    pl_ptr: Option<usize>
 }
 
 #[derive(Debug)]
@@ -27,68 +30,55 @@ struct Pipeline {
 }
 
 impl Pipeline {
-    fn load(path: PathBuf) -> Pipeline {
-        let pl_data = fs::read_to_string(path).expect("Unable to load pipeline");
-        let mut lines = pl_data.lines();
+    fn execute<'inv, 'src: 'inv>(flow: &mut Workflow,
+                                 pl_self: usize,
+                                 inv: &Invocation<'src>,
+                                 symbols: &mut inter::Symbols<'src>,
+                                 log: &mut util::Log<'src>,
+                                 ) {
+        println!("Executing pipeline '{}'", &flow.lines[pl_self].name);
+        for st_index in 0..flow.lines[pl_self].stages.len() {
+            if !flow.lines[pl_self].stages[st_index].enabled {
+                println!("Ignoring disabled stage '{}'...", flow.lines[pl_self].stages[st_index].name);
+                continue;
+            }
 
-        let name = {
-            if let Some(ln_one) = lines.next() {
-                ln_one.to_string()
+            if let Some(ptr) = flow.lines[pl_self].stages[st_index].pl_ptr {
+                Pipeline::execute(flow, ptr, inv, symbols, log);
             }
             else {
-                panic!("Blank pipeline file");
+                let name = &flow.lines[pl_self].stages[st_index].name;
+                match flow.lines[pl_self].stages[st_index].state {
+                    RunState::NOTRUN => {
+                        println!("Executing pipeline stage '{}'...", name);
+                        let block_id = *symbols.blocks.get(name.as_str()).unwrap();
+                        let mut node: inter::LinkNode = inv.art.node(block_id);
+                        exec::execute_block(inv, symbols, log, &node);
+                    },
+                    RunState::DONE   => {
+                        println!("Already done stage '{}', skipping...", name);
+                    },
+                }
             }
-        };
-
-        let mut stages = vec![];
-
-        for line in lines {
-            let parts: Vec<&str> = line.split(' ').collect();
-            
-            let stage = {
-                if let Some(part_one) = parts.get(0) {
-                    part_one.to_string()
-                }
-                else {
-                    panic!("Missing stage in pipeline file");
-                }
-            };
-
-            let state = {
-                if let Some(part_two) = parts.get(1) {
-                    match *part_two {
-                        "NOTRUN" => RunState::NOTRUN,
-                        "DONE"   => RunState::DONE  ,
-                        _        => { panic!("Bad state in pipeline file"); }
-                    }
-                }
-                else {
-                    panic!("Missing state in pipeline file");
-                }
-            };
-
-            stages.push(PipelineStage { name: stage, state: state } );
+            flow.lines[pl_self].stages[st_index].state = RunState::DONE;
         }
+    }
+}
 
-        Pipeline { name, stages }
+struct Workflow {
+    lines: Vec<Pipeline>,
+    index : HashMap<String, usize>,
+    // filepath?
+}
+
+impl Workflow {
+    fn new() -> Workflow {
+        Workflow { lines: vec![], index: HashMap::new() }
     }
 
-    fn dump(&self, path: PathBuf) {
-        let mut out = self.name.clone();
-        
-        for PipelineStage { ref name, ref state } in &self.stages {
-            out.push_str("\n");
-            out.push_str(name);
-            out.push_str(" ");
-            out.push_str( {
-                match *state {
-                    RunState::NOTRUN => "NOTRUN",
-                    RunState::DONE   => "DONE"  ,
-                }
-            });
-        }
-
-        fs::write(path, out).expect("Unable to write pipeline file");
+    fn execute<'inv, 'src: 'inv>(&mut self, inv: &Invocation<'src>, symbols: &mut inter::Symbols<'src>, log: &mut util::Log<'src>) {
+        let mut main_line = self.index.get(&inv.pl_name).unwrap();
+        Pipeline::execute(self, *main_line, inv, symbols, log);
     }
 }
 
@@ -121,83 +111,56 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
 
         let mut symbols = inter::Symbols::new();
 
-        let pl_path = self.edir.join(&self.pl_name);
-        let mut pipe = {
-            if pl_path.exists() {
-                Pipeline::load(pl_path)
+        // Recursively produce list of execution stages
+        let root = self.art.root();
+        let mut flow = Workflow::new();
+
+        for child in root.children() {
+            let tag = &child.children()[0];
+            if tag.is_type(&PTNodeType::NAME) {
+                symbols.blocks.insert(tag.token_value(), child.ptn.id);
             }
-            else {
-                // Recursively produce list of execution stages
-                let root = self.art.root();
+
+            // Find Pipeline requested by invocation 
+            if child.is_type(&PTNodeType::PIPELINE) {
+                let pl_children = child.children();
+
+//              if *pl_children[0].token_value() == self.pl_name {
+                let pl_name = &pl_children[0].token_value();
+                let pl_list = &pl_children[1];
                 let mut stages = vec![];
 
-                for child in root.children() {
-                    // Find Pipeline requested by invocation 
-                    if child.is_type(&PTNodeType::PIPELINE) {
-                        let pl_children = child.children();
+                for stage in pl_list.children() {
+                    stage.expect_type(&PTNodeType::NAME);
+                    let name = stage.token_value();
+                    //check_name(name);
 
-                        if *pl_children[0].token_value() == self.pl_name {
-                            let pl_list = &pl_children[1];
+                    let enabled = stage.children().len() > 0;
 
-                            for stage in pl_list.children() {
-                                stage.expect_type(&PTNodeType::NAME);
-                                let name = stage.tok.val.slice();
-                                //check_name(name);
-                                
-                                stages.push(PipelineStage {
-                                    name: name.to_string(),
-                                    state: RunState::NOTRUN,
-                                });
-                            }
-                            break
-                        }
-                    }
-
-                    // Store Blocks in Symbol Table while we're at it
-                    else if child.is_type(&PTNodeType::BLOCK) {
-                       let tag = &child.children()[0];
-                       if tag.is_type(&PTNodeType::NAME) {
-                           symbols.blocks.insert(tag.token_value(), child.ptn.id);
-                       }
-                    }
+                    stages.push(PipelineStage {
+                        name: name.to_string(),
+                        enabled: enabled,
+                        state: RunState::NOTRUN,
+                        pl_ptr: None,
+                    });
                 }
-                Pipeline { name: self.pl_name.clone(), stages }
+                flow.index.insert(pl_name.to_string(), flow.lines.len());
+                flow.lines.push(Pipeline { name: pl_name.to_string(), stages });
             }
-        };
-        
-        for PipelineStage { name: ref st_name, state: ref mut st_state } in &mut pipe.stages {
-            match *st_state {
-                RunState::NOTRUN => {
-                    println!("Executing pipeline stage '{}'...", st_name);
-                    let block_id = *symbols.blocks.get(st_name.as_str()).unwrap();
-                    let mut node: inter::LinkNode = self.art.node(block_id);
-                    exec::execute_block(&self, &mut symbols, log, &node);
-                    /*
-                    if let Some(es) = end_stage {
-                        if *es == *st_name {
-                            return;
-                        }
-                    }
-                    */
-                
-                },
-                RunState::DONE   => {
-                    println!("Already done stage '{}', skipping...", st_name);
-                    /*
-                    if let Some(es) = end_stage {
-                        if *es == *st_name {
-                            println!("Nothing to be done");
-                            return;
-                        }
-                    }
-                    */
-                },
+        }
+
+
+        for pl in &mut flow.lines {
+            for stage in &mut pl.stages {
+                match flow.index.get(&stage.name) {
+                    Some(nxt_pl) => { (*stage).pl_ptr = Some(*nxt_pl); },
+                    None => (),
+                }
             }
-            *st_state = RunState::DONE;
         }
         
-        pipe.dump(self.edir.join(&self.pl_name));
-        
+        flow.execute(&self, &mut symbols, log);
+
         env::set_current_dir(&cwd).unwrap_or_else( | _ | { 
             log.sys_terminal("Could not change CWD!");
         });
