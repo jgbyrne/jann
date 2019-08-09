@@ -573,6 +573,14 @@ fn parse_val_stmt(parser: &mut Parser) -> Option<usize> {
                     parser.tree.bind_child(stage, stage_enabled);
                 }
                 if !parser.has_cur() { break; }
+                match parser.tok().tt {
+                    TokenType::LBRACK => {
+                        let tags = parse_val(parser)?;
+                        parser.tree.bind_child(stage, tags);
+                    },
+                    _ => (),
+                }
+
                 bar_tok_id = parser.tok_id();
                 match parser.tok().tt {
                     TokenType::PIPE => {

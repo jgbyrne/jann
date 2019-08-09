@@ -114,21 +114,21 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
 
         let mut symbols = inter::Symbols::new();
 
-        // Recursively produce list of execution stages
         let root = self.art.root();
         let mut flow = Workflow::new();
 
+        // Populate the symbol table and build the workflow by walking
+        // through the top level nodes of the parse tree
+        
         for child in root.children() {
             let tag = &child.children()[0];
             if tag.is_type(&PTNodeType::NAME) {
                 symbols.blocks.insert(tag.token_value(), child.ptn.id);
             }
 
-            // Find Pipeline requested by invocation 
             if child.is_type(&PTNodeType::PIPELINE) {
                 let pl_children = child.children();
 
-//              if *pl_children[0].token_value() == self.pl_name {
                 let pl_name = &pl_children[0].token_value();
                 let pl_list = &pl_children[1];
                 let mut stages = vec![];
@@ -138,7 +138,10 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
                     let name = stage.token_value();
                     //check_name(name);
 
-                    let enabled = stage.children().len() > 0;
+                    let enabled = if let Some(c1) = stage.children().get(0) {
+                        c1.is_type(&PTNodeType::FLAG)
+                    }
+                    else { false };
 
                     stages.push(PipelineStage {
                         name: name.to_string(),
