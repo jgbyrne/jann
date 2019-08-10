@@ -1,4 +1,5 @@
 use parse::{ParseTree, ParseTreeNode, PTNodeType, Token, TokenType};
+use com;
 use inter;
 use exec;
 use deploy;
@@ -16,27 +17,28 @@ enum RunState {
 }
 
 #[derive(Debug)]
-struct PipelineStage {
-    name: String,
+struct PipelineStage<'src> {
+    name: &'src str,
+    tags: Vec<&'src str>,
     enabled: bool,
     state: RunState,
     pl_ptr: Option<usize>
 }
 
 #[derive(Debug)]
-struct Pipeline {
-    name  : String,
-    stages: Vec<PipelineStage>,
+struct Pipeline<'src> {
+    name  : &'src str,
+    stages: Vec<PipelineStage<'src>>,
 }
 
-impl Pipeline {
-    fn execute<'inv, 'src: 'inv>(flow: &mut Workflow,
-                                 pl_self: usize,
-                                 inv: &Invocation<'src>,
-                                 symbols: &mut inter::Symbols<'src>,
-                                 log: &mut util::Log<'src>,
-                                 tab: usize,
-                                 ) {
+impl<'inv, 'src: 'inv> Pipeline<'src> {
+    fn execute(flow: &mut Workflow,
+               pl_self: usize,
+               inv: &Invocation<'src>,
+               symbols: &mut inter::Symbols<'src>,
+               log: &mut util::Log<'src>,
+               tab: usize,
+               ) {
         let tabs = "\t".repeat(tab);
         println!("[Execute] {}{}", tabs, &flow.lines[pl_self].name);
         for st_index in 0..flow.lines[pl_self].stages.len() {
@@ -54,7 +56,7 @@ impl Pipeline {
                 match flow.lines[pl_self].stages[st_index].state {
                     RunState::NOTRUN => {
                         println!("[Execute] {} | {}", tabs, name);
-                        let block_id = *symbols.blocks.get(name.as_str()).unwrap();
+                        let block_id = *symbols.blocks.get(name).unwrap();
                         let mut node: inter::LinkNode = inv.art.node(block_id);
                         exec::execute_block(inv, symbols, log, &node);
                     },
@@ -68,19 +70,19 @@ impl Pipeline {
     }
 }
 
-struct Workflow {
-    lines: Vec<Pipeline>,
-    index : HashMap<String, usize>,
+struct Workflow<'src> {
+    lines: Vec<Pipeline<'src>>,
+    index : HashMap<&'src str, usize>,
     // filepath?
 }
 
-impl Workflow {
-    fn new() -> Workflow {
+impl<'inv, 'src: 'inv> Workflow<'src> {
+    fn new() -> Workflow<'src> {
         Workflow { lines: vec![], index: HashMap::new() }
     }
 
-    fn execute<'inv, 'src: 'inv>(&mut self, inv: &Invocation<'src>, symbols: &mut inter::Symbols<'src>, log: &mut util::Log<'src>) {
-        let mut main_line = self.index.get(&inv.pl_name).unwrap();
+    fn execute(&mut self, inv: &Invocation<'src>, symbols: &mut inter::Symbols<'src>, log: &mut util::Log<'src>) {
+        let mut main_line = self.index.get(inv.pl_name.as_str()).unwrap();
         Pipeline::execute(self, *main_line, inv, symbols, log, 0);
     }
 }
@@ -91,6 +93,7 @@ pub struct Invocation<'src> {
     pub opts : deploy::DepOpt,
     pub pl_name : String, 
     pub art  : inter::Artifact<'src>,
+    pub switches: com::Switches,
 }
 
 
@@ -135,23 +138,85 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
 
                 for stage in pl_list.children() {
                     stage.expect_type(&PTNodeType::NAME);
-                    let name = stage.token_value();
                     //check_name(name);
 
-                    let enabled = if let Some(c1) = stage.children().get(0) {
-                        c1.is_type(&PTNodeType::FLAG)
+                    let mut enabled = false;
+                    let mut tags = vec![]; 
+                    for child in stage.children() {
+                        if child.is_type(&PTNodeType::FLAG) {
+                            enabled = true;
+                        }
+                        else if child.is_type(&PTNodeType::LIST) {
+                            for tag in child.children() {
+                                match tag.ptn.nt {
+                                    PTNodeType::NAME => { tags.push(tag.token_value()) },
+                                    _ => { /* TODO error for bad tag types */ },
+                                }
+                            }
+                        }
                     }
-                    else { false };
 
                     stages.push(PipelineStage {
-                        name: name.to_string(),
+                        name: stage.token_value(),
+                        tags: tags,
                         enabled: enabled,
                         state: RunState::NOTRUN,
                         pl_ptr: None,
                     });
                 }
-                flow.index.insert(pl_name.to_string(), flow.lines.len());
-                flow.lines.push(Pipeline { name: pl_name.to_string(), stages });
+                flow.index.insert(pl_name, flow.lines.len());
+                flow.lines.push(Pipeline { name: pl_name, stages });
+            }
+        }
+
+        let mut enable_set : Vec<(com::Reference, bool)> = vec![];
+
+        for (com, refs) in &self.switches {
+            match com.as_ref() {
+                "enable" => refs.iter().for_each(|r| enable_set.push((r.clone(), true))),
+                "disable" => refs.iter().for_each(|r| enable_set.push((r.clone(), false))),
+                _ => (),
+            }
+        }
+
+        for (r, val) in enable_set {
+            match r {
+                com::Reference::TAG(ref rtag) => {
+                    for pl in &mut flow.lines {
+                        for stage in &mut pl.stages {
+                            if stage.tags.contains(&rtag.as_str()) {
+                                stage.enabled = val;
+                            }
+                        }
+                    }
+                },
+                com::Reference::STAGE(ref rstage) => {
+                    for pl in &mut flow.lines {
+                        for stage in &mut pl.stages {
+                            if *rstage == stage.name {
+                                stage.enabled = val;
+                            }
+                        }
+                    }
+                },
+                com::Reference::PL_TAG(ref pl, ref rtag) => {
+                    if let Some(pl_ind) = flow.index.get(pl.as_str()) {
+                        for stage in &mut flow.lines[*pl_ind].stages {
+                            if stage.tags.contains(&rtag.as_str()) {
+                                stage.enabled = val;
+                            }
+                        }
+                    }
+                },
+                com::Reference::PL_STAGE(ref pl, ref rstage) => {
+                    if let Some(pl_ind) = flow.index.get(pl.as_str()) {
+                        for stage in &mut flow.lines[*pl_ind].stages {
+                            if stage.name == *rstage {
+                                stage.enabled = val;
+                            }
+                        }
+                    }
+                },
             }
         }
 

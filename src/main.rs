@@ -42,6 +42,8 @@ fn main() {
         },
     };
 
+    //println!("Switches: {:?}", switches);
+
     let mut log = util::Log::new(job, &lines);
 
     let mut toks = vec![];
@@ -73,6 +75,7 @@ fn main() {
         opts: deploy::DepOpt { OW_FF: true, OW_DD: true, OW_FD: false, OW_DF: true, INTER: true },
         pl_name: String::from("main"),
         art: art,
+        switches: switches,
     };
     inv.invoke(&mut log);
     log.conclude();
