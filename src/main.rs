@@ -65,15 +65,23 @@ fn main() {
     }
     //tree.print_tree();
     
-    let art = inter::Artifact::new(&toks, &tree);
+    let mut pl_name = String::from("main");
+    for (com, refs) in &switches {
+        if com == "execute" {
+            if let Some(com::Reference::PIPELINE(pl)) = refs.get(0) {
+                pl_name = pl.to_string();
+            }
+        }
+    }
 
+    let art = inter::Artifact::new(&toks, &tree);
     let cwd = env::current_dir().expect("Could not get cwd"); 
     let edir = cwd.join("pipeline-main");
     let inv = invoke::Invocation {
         root: cwd,
         edir,
         opts: deploy::DepOpt { OW_FF: true, OW_DD: true, OW_FD: false, OW_DF: true, INTER: true },
-        pl_name: String::from("main"),
+        pl_name,
         art: art,
         switches: switches,
     };

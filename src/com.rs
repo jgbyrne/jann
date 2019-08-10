@@ -5,10 +5,14 @@ use std::process;
 
 #[derive(Debug, Clone)]
 pub enum Reference {
+    // --enable, --disable
     TAG(String),
     STAGE(String),
     PL_TAG(String, String),
     PL_STAGE(String, String),
+
+    // --execute
+    PIPELINE(String),
 }
 
 pub type Switches = Vec<(String, Vec<Reference>)>; 
@@ -23,40 +27,48 @@ pub enum Command {
 
 fn parse_switches(args : env::Args) -> Switches {
     let mut switches = Switches::new();
-    let mut cur_verb = None;
+    let mut cur_verb : Option<String> = None;
     let mut cur_args = vec![];
     for mut arg in args {
         if arg.starts_with("--") {
-            if let Some(verb) = cur_verb {
-                switches.push((verb, cur_args));
+            if let Some(ref verb) = cur_verb {
+                switches.push((verb.to_string(), cur_args));
                 cur_args = vec![];
             }
             cur_verb = Some(arg.split_off(2).to_string());
         }
         else {
-            if cur_verb.is_none() {
-                println!("Expected a verb (such as --enable) in the position of the argument {}", arg);
-                process::exit(1);
-            }
-
-            if arg.starts_with("%") {
-                cur_args.push(Reference::TAG(arg.split_off(1).to_string()));
-            }
-            else {
-                let parts = arg.split(".").collect::<Vec<&str>>();
-                if parts.len() == 1 {
-                    cur_args.push(Reference::STAGE(arg));
-                }
-                else {
-                    if parts[1].starts_with("%") {
-                        cur_args.push(Reference::PL_TAG(parts[0].to_string(),
-                                                        parts[1].to_string()
-                                                                .split_off(1)
-                                                                .to_string()));
+            match cur_verb {
+                None => {
+                    println!("Expected a verb (such as --enable) in the position of the argument {}", arg);
+                    process::exit(1);
+                },
+                Some(ref verb) => {
+                    if verb == "execute" {
+                        cur_args.push(Reference::PIPELINE(arg));
                     }
                     else {
-                        cur_args.push(Reference::PL_STAGE(parts[0].to_string(),
-                                                          parts[1].to_string()));
+                        if arg.starts_with("%") {
+                            cur_args.push(Reference::TAG(arg.split_off(1).to_string()));
+                        }
+                        else {
+                            let parts = arg.split(".").collect::<Vec<&str>>();
+                            if parts.len() == 1 {
+                                cur_args.push(Reference::STAGE(arg));
+                            }
+                            else {
+                                if parts[1].starts_with("%") {
+                                    cur_args.push(Reference::PL_TAG(parts[0].to_string(),
+                                                                    parts[1].to_string()
+                                                                            .split_off(1)
+                                                                            .to_string()));
+                                }
+                                else {
+                                    cur_args.push(Reference::PL_STAGE(parts[0].to_string(),
+                                                                      parts[1].to_string()));
+                                }
+                            }
+                        }
                     }
                 }
             }

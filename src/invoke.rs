@@ -217,6 +217,7 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
                         }
                     }
                 },
+                _ => unreachable!(),
             }
         }
 
