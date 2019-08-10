@@ -2,13 +2,13 @@ use parse::Token;
 use std::process;
 
 pub struct Log<'src> {
-    job  : &'src str,
+    job  : String,
     lines: &'src Vec<String>,
     err_count: usize,
 }
 
 impl<'src> Log<'src> {
-    pub fn new(job: &'src str, lines: &'src Vec<String>) -> Log<'src> {
+    pub fn new(job: String, lines: &'src Vec<String>) -> Log<'src> {
         Log {
             job: job,
             lines: lines,

@@ -1,8 +1,11 @@
 use std::io;
-use std::io::BufRead;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::env;
+use std::process;
+use std::fs::File;
 
+mod com;
 mod parse;
 mod util;
 mod invoke;
@@ -11,10 +14,37 @@ mod inter;
 mod deploy;
 
 fn main() {
-    let stdin = io::stdin();
-    let lines: Vec<String> = stdin.lock().lines().map(|l| l.unwrap()).collect();
+    let command = com::Command::new();
+
+    let (lines, switches, job) = match command {
+        com::Command::HELP { code } => {
+            println!("jann - Configuration deployment utility for *nix");
+            process::exit(code);
+        },
+        com::Command::VERSION { code } => {
+            println!("jann v0.1.0");
+            process::exit(code);
+        },
+        com::Command::DO_STDIN { switches } => {
+            let stdin = io::stdin();
+            let lines: Vec<String> = stdin.lock().lines().map(|l| l.unwrap()).collect();
+            (lines, switches, String::from("stdin"))
+        },
+        com::Command::DO_FILE { switches, file: path } => {
+            let file = File::open(&path);
+            let file = file.unwrap_or_else( |_| {
+                println!("error: no such file {}", path);
+                process::exit(66);
+            });
+            let reader = BufReader::new(file);
+            let lines: Vec<String> = reader.lines().map(|l| l.unwrap()).collect();
+            (lines, switches, path)
+        },
+    };
+
+    let mut log = util::Log::new(job, &lines);
+
     let mut toks = vec![];
-    let mut log = util::Log::new("stdin", &lines);
 
     let mut id: usize = 1;
     let mut lno: usize = 1;

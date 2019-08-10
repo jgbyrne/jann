@@ -7,4 +7,3 @@ authors = ["Jack Byrne"]
 walkdir = "2"
 bitflags = "1.1.0"
 dirs = "2.0.2"
-clap = "2.33.0"
