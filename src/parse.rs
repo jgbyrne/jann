@@ -103,7 +103,7 @@ fn breaking(c: char) -> bool {
 
 pub fn tokenise<'src>(log: &mut util::Log, lno: usize, init_id: &mut usize, input: &'src str) -> Vec<Token<'src>> {
 
-    if input.starts_with("//") {
+    if input.trim_start().starts_with("//") {
         return vec![];
     }
 
