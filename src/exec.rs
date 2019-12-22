@@ -13,20 +13,31 @@ use inter;
 use util;
 use parse;
 
+// Substitute variable names from the symbol table
+// Used for shell command statements and also other value strings
+
 fn interpolate<'inv, 'src: 'inv>(log: &mut util::Log<'src>,
                                  symbols: &mut inter::Symbols<'src>,
                                  node: &inter::LinkNode<'inv, 'src>) -> String {
     let base = node.token_value();
+
+    // A mini enumeration of parsing states
     let NONE = 0;
     let LBRACE = 1;
     let RBRACE = 2;
     let WITHIN = 3;
+    // Expecting Escape
     let mut esc = false;
+    // Expected State
     let mut ex = NONE;
 
+    // The final string is built into outstr
     let mut outstr: String = "".to_string();
+
+    // Name stores interpolation variables as they are parsed
     let mut name: String = "".to_string();
 
+    // We parse on a char-by-char basis
     for c in base.chars() {
         if ex == RBRACE {
             if c != '}' {

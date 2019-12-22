@@ -2,6 +2,9 @@ use std::str;
 use std::fmt;
 use util;
 
+// A span represents a slice into the input string
+// Typically, a token will encapsulate a Span
+
 #[derive(Copy, Clone)]
 pub struct Span<'src> {
     pub src: &'src str,
@@ -99,6 +102,8 @@ fn breaking(c: char) -> bool {
 
      ['{','}','[',']','$','@','-','>','=',',','!','|','#'].iter().find(|b| **b == c).is_some()
 }
+
+/* tokenise() takes input strings and processes them into strings of tokens */
 
 pub fn tokenise<'src>(log: &mut util::Log, lno: usize, init_id: &mut usize, input: &'src str) -> Vec<Token<'src>> {
 
@@ -252,21 +257,23 @@ pub fn tokenise<'src>(log: &mut util::Log, lno: usize, init_id: &mut usize, inpu
     toks
 }
 
+/* Having tokenised the input Jannfile, we can build a Parse Tree */
+
 #[derive(PartialEq, Debug)]
 pub enum PTNodeType {
     ROOT   ,
-    BLOCK  ,
-    MAP    ,
-    ASSIGN ,
-    COMMAND,
-    DIRECTIVE,
-    JNAME  ,
-    NAME   ,
-    LIST   ,
-    INSERT ,
-    COPY   ,
-    PIPELINE,
-    FLAG    ,
+    BLOCK  ,   // name { }
+    MAP    ,   // [a, b, c] -> d { }
+    ASSIGN ,   // foo = bar
+    COMMAND,   // $ echo foo
+    DIRECTIVE, // # include bar::spqr
+    JNAME  ,   // @connaught
+    NAME   ,   // Any variable or string
+    LIST   ,   // [foo, bar, baz]
+    INSERT ,   // src => dst
+    COPY   ,   // src >> dst
+    PIPELINE,  // pl | stage1 : stage2 | stage3
+    FLAG    ,  // 'Virtual node', denotes if stage is enabled
 }
 
 #[derive(Debug)]
@@ -423,6 +430,8 @@ impl<'log, 'src> Parser<'log, 'src> {
 
 }
 
+// parse_val - either a String (Name), JName, or List
+
 fn parse_val(parser: &mut Parser) -> Option<usize> {
     let cur_tt = parser.tok().tt;
     let tok_id = parser.tok_id();
@@ -480,6 +489,8 @@ fn parse_val(parser: &mut Parser) -> Option<usize> {
     }
 }
 
+// Basic recovery routine, just keep going til we find a right brace
+
 fn recover_block(parser: &mut Parser) {
     loop {
         if parser.step_or_err("Unclosed Brace", "Add a brace after here").is_none() {
@@ -517,6 +528,8 @@ fn parse_block(parser: &mut Parser, tag: usize) -> Option<usize> {
     }
     Some(block)
 }
+
+// parse_val_stmt - Parse statement with the structure <val> <operator> ...
 
 fn parse_val_stmt(parser: &mut Parser) -> Option<usize> {
     let val = parse_val(parser)?;
@@ -625,6 +638,8 @@ fn parse_val_stmt(parser: &mut Parser) -> Option<usize> {
         _ => { parser.error("Malformed statement", "This token is invalid in this position"); None },
     }
 }
+
+// parse_stmt - Parse statements of the form <op> ...
 
 fn parse_stmt(parser: &mut Parser) -> Option<usize> {
     if !parser.has_cur() {
