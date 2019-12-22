@@ -127,7 +127,7 @@ fn execute_stmts<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
             PTNodeType::ASSIGN => {
                 let rval = inter::load_value(symbols, &node.children()[1]);
                 let lval = &node.children()[0];
-                if inter::check_name(lval.token_value()) {
+                if util::check_name(lval.token_value()) {
                     if lval.is_type(&PTNodeType::NAME) {
                         scope_names.push(lval.token_value());
                         symbols.names.insert(lval.token_value(), rval);
@@ -242,7 +242,7 @@ pub fn execute_block<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
 
     match tag.ptn.nt {
         PTNodeType::NAME => {
-            if inter::check_name(tag.token_value()) {
+            if util::check_name(tag.token_value()) {
                 execute_stmts(inv, symbols, log, block_children.iter().skip(1).collect());
             }
             else {
@@ -254,7 +254,7 @@ pub fn execute_block<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
             let map_children = map.children();
             if let inter::Value::List(vlist) = inter::load_value(symbols, &map_children[0]) {
                 let name = map_children[1].token_value();
-                if inter::check_name(name) {
+                if util::check_name(name) {
                     for elem in vlist {
                         symbols.names.insert(name, elem);
                         execute_stmts(inv, symbols, log, block_children.iter().skip(1).collect());

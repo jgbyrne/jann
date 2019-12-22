@@ -76,7 +76,7 @@ fn main() {
 
     let art = inter::Artifact::new(&toks, &tree);
     let cwd = env::current_dir().expect("Could not get cwd"); 
-    let edir = cwd.join("pipeline-main");
+    let edir = cwd.join("deploy");
     let inv = invoke::Invocation {
         root: cwd,
         edir,

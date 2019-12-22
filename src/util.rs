@@ -1,3 +1,5 @@
+extern crate regex;
+
 use parse::Token;
 use std::process;
 
@@ -60,4 +62,9 @@ impl<'src> Log<'src> {
         self.err_count += 1;
         self.conclude();
     }
+}
+
+pub fn check_name(name: &str) -> bool {
+    let re = regex::Regex::new(r"^[a-zA-Z0-9_]*$").unwrap();
+    re.is_match(name)
 }

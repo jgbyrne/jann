@@ -60,6 +60,7 @@ pub enum TokenType {
     BANG  ,   // !
     PIPE  ,   // |
     COLON ,   // :
+    HASH  ,   // #
     ERR   ,
 }
 
@@ -97,10 +98,15 @@ fn breaking(c: char) -> bool {
          return true;
      }
 
-     ['{','}','[',']','$','@','-','>','=',',','!','|'].iter().find(|b| **b == c).is_some()
+     ['{','}','[',']','$','@','-','>','=',',','!','|','#'].iter().find(|b| **b == c).is_some()
 }
 
 pub fn tokenise<'src>(log: &mut util::Log, lno: usize, init_id: &mut usize, input: &'src str) -> Vec<Token<'src>> {
+
+    if input.starts_with("//") {
+        return vec![];
+    }
+
     let mut id = *init_id;
     let mut within: Within = Within::NONE;
     let mut esc: bool = false;
@@ -124,7 +130,8 @@ pub fn tokenise<'src>(log: &mut util::Log, lno: usize, init_id: &mut usize, inpu
                     ',' => Some(TokenType::COMMA ),
                     '!' => Some(TokenType::BANG  ),
                     '|' => Some(TokenType::PIPE  ),
-                    ':' => Some(TokenType::COLON  ),
+                    ':' => Some(TokenType::COLON ),
+                    '#' => Some(TokenType::HASH  ),
                     _   => None, 
                 };
 
@@ -254,6 +261,7 @@ pub enum PTNodeType {
     MAP    ,
     ASSIGN ,
     COMMAND,
+    DIRECTIVE,
     JNAME  ,
     NAME   ,
     LIST   ,
@@ -641,6 +649,15 @@ fn parse_stmt(parser: &mut Parser) -> Option<usize> {
             parser.step();
             Some(stmt)
         },
+        TokenType::HASH => {
+            let stmt = parser.orphan(PTNodeType::DIRECTIVE, tok_id);
+            parser.step();
+            let verb = parse_val(parser)?;
+            parser.tree.bind_child(stmt, verb);
+            let data = parse_val(parser)?;
+            parser.tree.bind_child(stmt, data);
+            Some(stmt)
+        }
         TokenType::RBRACE  => { parser.step(); Some(0) },
         _                  => { parse_val_stmt(parser) },
     }

@@ -15,6 +15,7 @@ pub struct Symbols<'src> {
     pub names: HashMap<&'src str, Value<'src>>,
     pub jnames: HashMap<&'src str, Value<'src>>,
     pub blocks: HashMap<&'src str, usize>,
+    pub includes: HashMap<String, (String, String, bool)>,
 }
 
 impl<'src> Symbols<'src> {
@@ -23,6 +24,7 @@ impl<'src> Symbols<'src> {
             names : HashMap::new(),
             jnames: HashMap::new(),
             blocks: HashMap::new(),
+            includes: HashMap::new(),
         }
     }
 }
@@ -89,10 +91,6 @@ impl<'int, 'src: 'int> Artifact<'src> {
         let ptn = &self.tree.get_node(n);
         LinkNode { int: &self, tok: &(self.toks[ptn.tok_id - 1]), ptn: ptn }
     }
-}
-
-pub fn check_name(name: &str) -> bool {
-    true /* lol */
 }
 
 pub fn load_value<'old, 'src: 'old>(symbols: &Symbols<'src>,

@@ -9,6 +9,7 @@ use std::fs;
 use std::env;
 use std::path::PathBuf;
 use std::collections::HashMap;
+use std::process::Command;
 
 #[derive(Debug)]
 enum RunState {
@@ -56,9 +57,40 @@ impl<'inv, 'src: 'inv> Pipeline<'src> {
                 match flow.lines[pl_self].stages[st_index].state {
                     RunState::NOTRUN => {
                         println!("[Execute] {} | {}", tabs, name);
-                        let block_id = *symbols.blocks.get(name).unwrap();
-                        let mut node: inter::LinkNode = inv.art.node(block_id);
-                        exec::execute_block(inv, symbols, log, &node);
+                        if let Some(block_id) = symbols.blocks.get(name) {
+                            let mut node: inter::LinkNode = inv.art.node(*block_id);
+                            exec::execute_block(inv, symbols, log, &node);
+                        }
+                        else if let Some((file, entry, sudo)) = symbols.includes.get(*name) {
+                            let file = inv.root.join(file).into_os_string().into_string().unwrap();
+                            let binary = env::current_exe().unwrap().into_os_string().into_string().unwrap();
+                            let incl_msg = format!("--- Include: {}::{} ---", &file, &entry);
+                            println!("{}", incl_msg);
+                            let mut proc = if *sudo {
+                                Command::new("sudo")
+                                    .current_dir(&inv.root)
+                                    .arg(binary)
+                                    .arg(file)
+                                    .arg("--execute")
+                                    .arg(entry)
+                                    .spawn()
+                                    .expect("Failed to run included Jannfile")
+                            }
+                            else {
+                                Command::new(binary)
+                                    .current_dir(&inv.root)
+                                    .arg(file)
+                                    .arg("--execute")
+                                    .arg(entry)
+                                    .spawn()
+                                    .expect("Failed to run included Jannfile")
+                            };
+                            proc.wait().expect("Failed to wait on Jann");
+                            println!("{}", "-".repeat(incl_msg.len()));
+                        }
+                        else {
+                            log.sys_terminal(&format!("No such block {}", name));
+                        }
                     },
                     RunState::DONE   => {
                         println!("[   Done] {} * {}", tabs, name);
@@ -82,7 +114,9 @@ impl<'inv, 'src: 'inv> Workflow<'src> {
     }
 
     fn execute(&mut self, inv: &Invocation<'src>, symbols: &mut inter::Symbols<'src>, log: &mut util::Log<'src>) {
-        let mut main_line = self.index.get(inv.pl_name.as_str()).unwrap();
+        let mut main_line = self.index.get(inv.pl_name.as_str()).unwrap_or_else( | | {
+            log.sys_terminal("No such pipeline exists.");
+        });
         Pipeline::execute(self, *main_line, inv, symbols, log, 0);
     }
 }
@@ -122,8 +156,58 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
 
         // Populate the symbol table and build the workflow by walking
         // through the top level nodes of the parse tree
-        
+
+        fn parse_extern(node: &inter::LinkNode, log: &mut util::Log) -> Option<(String, String)> {
+            let parts = node.token_value().split("::").collect::<Vec<&str>>();
+            match parts.len() {
+                1 => Some((parts[0].to_string(), "main".to_string())),
+                2 => Some((parts[0].to_string(), parts[1].to_string())),
+                _ => { log.error("Bad directive", "Too many '::'", node.tok); None },
+            } 
+        }
+
         for child in root.children() {
+            if child.is_type(&PTNodeType::DIRECTIVE) {
+                let verb = &child.children()[0];
+                let data = &child.children()[1];
+                if !verb.is_type(&PTNodeType::NAME) {
+                    log.error("Invalid directive verb", "This needs to be a name", verb.tok);
+                    continue;
+                }
+                match verb.token_value() {
+                    v @ "include" | v @ "sudo_include" => {
+                        let (file, entry, symbol) = match data.ptn.nt {
+                            PTNodeType::NAME => {
+                                let (file, entry) = match parse_extern(&data, log) { Some(t) => t, None => { continue; } };
+                                (file, entry.clone(), entry)
+                            },
+                            PTNodeType::LIST => {
+                                if data.children().len() != 2 {
+                                    log.error("Bad list argument to include directive",
+                                              "Should be two values here", data.tok);
+                                }
+                                if !data.children().iter().all(|c| c.is_type(&PTNodeType::NAME)) {
+                                    log.error("Bad value in list argument for include directive",
+                                              "These values need all be names", data.tok);
+                                }
+                                if let Some((file, entry)) = parse_extern(&data.children()[0], log) {
+                                    (file, entry, data.children()[1].token_value().to_string())
+                                }
+                                else {
+                                    continue;
+                                }
+                            },
+                            _ => {
+                                unimplemented!();
+                            }
+                        };
+                        symbols.includes.insert(symbol, (file, entry, v == "sudo_include"));
+                    },
+                    _ => {},
+                }
+                continue;
+            }
+
             let tag = &child.children()[0];
             if tag.is_type(&PTNodeType::NAME) {
                 symbols.blocks.insert(tag.token_value(), child.ptn.id);
@@ -133,12 +217,21 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
                 let pl_children = child.children();
 
                 let pl_name = &pl_children[0].token_value();
+
+                if !util::check_name(pl_name) {
+                    log.error("Invalid pipeline name", "Make this a valid pipeline name", &pl_children[0].tok);
+                    continue;
+                }
+
                 let pl_list = &pl_children[1];
                 let mut stages = vec![];
 
                 for stage in pl_list.children() {
                     stage.expect_type(&PTNodeType::NAME);
-                    //check_name(name);
+                    if !util::check_name(stage.token_value()) {
+                        log.error("Invalid stage name", "Make this a valid stage name", stage.tok);
+                        continue;
+                    }
 
                     let mut enabled = false;
                     let mut tags = vec![]; 
@@ -150,7 +243,7 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
                             for tag in child.children() {
                                 match tag.ptn.nt {
                                     PTNodeType::NAME => { tags.push(tag.token_value()) },
-                                    _ => { /* TODO error for bad tag types */ },
+                                    _ => { log.error("Invalid tag", "Make this a valid tag name", tag.tok) },
                                 }
                             }
                         }
@@ -214,6 +307,13 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
                             if stage.name == *rstage {
                                 stage.enabled = val;
                             }
+                        }
+                    }
+                },
+                com::Reference::ALL => {
+                    for pl in &mut flow.lines {
+                        for stage in &mut pl.stages {
+                            stage.enabled = val;
                         }
                     }
                 },

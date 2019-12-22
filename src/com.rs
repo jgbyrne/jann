@@ -10,6 +10,7 @@ pub enum Reference {
     STAGE(String),
     PL_TAG(String, String),
     PL_STAGE(String, String),
+    ALL,
 
     // --execute
     PIPELINE(String),
@@ -48,6 +49,9 @@ fn parse_switches(args : env::Args) -> Switches {
                         cur_args.push(Reference::PIPELINE(arg));
                     }
                     else {
+                        if arg == "*" {
+                            cur_args.push(Reference::ALL);
+                        }
                         if arg.starts_with("%") {
                             cur_args.push(Reference::TAG(arg.split_off(1).to_string()));
                         }
