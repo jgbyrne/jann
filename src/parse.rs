@@ -57,7 +57,6 @@ pub enum TokenType {
     DARROW,   // =>
     AARROW,   // >>
     COMMA ,   // ,
-    BANG  ,   // !
     PIPE  ,   // |
     COLON ,   // :
     HASH  ,   // #
@@ -128,7 +127,6 @@ pub fn tokenise<'src>(log: &mut util::Log, lno: usize, init_id: &mut usize, inpu
                     ']' => Some(TokenType::RBRACK),
                     '@' => Some(TokenType::AT    ),
                     ',' => Some(TokenType::COMMA ),
-                    '!' => Some(TokenType::BANG  ),
                     '|' => Some(TokenType::PIPE  ),
                     ':' => Some(TokenType::COLON ),
                     '#' => Some(TokenType::HASH  ),
@@ -267,7 +265,6 @@ pub enum PTNodeType {
     LIST   ,
     INSERT ,
     COPY   ,
-    EXEC   ,
     PIPELINE,
     FLAG    ,
 }
@@ -534,12 +531,6 @@ fn parse_val_stmt(parser: &mut Parser) -> Option<usize> {
     let tok_id  = parser.tok_id();
 
     match cur_tt {
-        TokenType::BANG => {
-            let stmt = parser.orphan(PTNodeType::EXEC, tok_id);
-            parser.tree.bind_child(stmt, val);
-            parser.step();
-            Some(stmt)
-        },
         TokenType::EQUALS => {
             let stmt = parser.orphan(PTNodeType::ASSIGN, tok_id);
             parser.tree.bind_child(stmt, val);
