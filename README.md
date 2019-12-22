@@ -1,8 +1,8 @@
 ## jann
 
-*Disclaimer: `jann` is alpha software. I implore you not to test it on any system that matters. `jann` is a penknife not a butter knife, and can overwrite important data with ease.*
-
 `jann` is a configuration deployment utility for \*nix operating systems.
+
+*Disclaimer: `jann` is alpha software. I implore you not to test it on any system that matters. `jann` is a penknife not a butter knife, and can overwrite important data with ease.*
 
 The idea behind `jann` is a simple one - you put all your configuration files in one directory tree, then write a manifest called a `Jannfile` to specify where in your filesystem those configuration files should be copied to. Note the difference in philosophy to the traditional technique of using `GNU stow`, which relies on softlinks.
 
