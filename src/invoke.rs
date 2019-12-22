@@ -142,6 +142,9 @@ pub struct Invocation<'src> {
 
 impl<'inv, 'src: 'inv> Invocation<'src> {
     pub fn invoke(self, log: &'inv mut util::Log<'src>) {
+
+        // Set up directories
+
         let cwd = env::current_dir().unwrap_or_else( | _ | {
             log.sys_terminal("Could not get cwd.");
         });
@@ -158,14 +161,14 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
             );
         });
 
+        // Create Symbol table and Workflow
+
         let mut symbols = inter::Symbols::new();
 
         let root = self.art.root();
         let mut flow = Workflow::new();
 
-        // Populate the symbol table and build the workflow by walking
-        // through the top level nodes of the parse tree
-
+        // Utility function to parse a reference to an external pipeline
         fn parse_extern(node: &inter::LinkNode, log: &mut util::Log) -> Option<(String, String)> {
             let parts = node.token_value().split("::").collect::<Vec<&str>>();
             match parts.len() {
@@ -175,7 +178,13 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
             } 
         }
 
+        // Populate the symbol table and build the workflow by walking
+        // through the top level nodes of the parse trees
+        
         for child in root.children() {
+
+            // First we check if the child is a directive we need to parse
+            
             if child.is_type(&PTNodeType::DIRECTIVE) {
                 let verb = &child.children()[0];
                 let data = &child.children()[1];
@@ -217,10 +226,15 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
                 continue;
             }
 
+            // It's not a directive, it must be a pipeline or block
+
             let tag = &child.children()[0];
             if tag.is_type(&PTNodeType::NAME) {
                 symbols.blocks.insert(tag.token_value(), child.ptn.id);
             }
+
+            // Blocks just need to be added to the Symbol table, but
+            // pipelines need to be incorporated into the Workflow.
 
             if child.is_type(&PTNodeType::PIPELINE) {
                 let pl_children = child.children();
@@ -274,8 +288,12 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
             }
         }
 
+        // We now determine which stages are enabled and which are disabled
+
         let mut enable_set : Vec<(com::Reference, bool)> = vec![];
 
+        // Build a list of all command line selectors
+        
         for (com, refs) in &self.switches {
             match com.as_ref() {
                 "enable" => refs.iter().for_each(|r| enable_set.push((r.clone(), true))),
@@ -284,8 +302,11 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
             }
         }
 
+        // Iterate through selectors and enable and disable stages as appropriate
+
         for (r, val) in enable_set {
             match r {
+                // --enable %foo
                 com::Reference::TAG(ref rtag) => {
                     for pl in &mut flow.lines {
                         for stage in &mut pl.stages {
@@ -295,6 +316,7 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
                         }
                     }
                 },
+                // --enable bar
                 com::Reference::STAGE(ref rstage) => {
                     for pl in &mut flow.lines {
                         for stage in &mut pl.stages {
@@ -304,6 +326,7 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
                         }
                     }
                 },
+                // --enable spqr.%foo
                 com::Reference::PL_TAG(ref pl, ref rtag) => {
                     if let Some(pl_ind) = flow.index.get(pl.as_str()) {
                         for stage in &mut flow.lines[*pl_ind].stages {
@@ -313,6 +336,7 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
                         }
                     }
                 },
+                // --enable spqr.bar
                 com::Reference::PL_STAGE(ref pl, ref rstage) => {
                     if let Some(pl_ind) = flow.index.get(pl.as_str()) {
                         for stage in &mut flow.lines[*pl_ind].stages {
@@ -322,6 +346,7 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
                         }
                     }
                 },
+                // --enable "*"
                 com::Reference::ALL => {
                     for pl in &mut flow.lines {
                         for stage in &mut pl.stages {
@@ -333,16 +358,16 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
             }
         }
 
-
+        // Link references between pipelines
         for pl in &mut flow.lines {
             for stage in &mut pl.stages {
-                match flow.index.get(&stage.name) {
-                    Some(nxt_pl) => { (*stage).pl_ptr = Some(*nxt_pl); },
-                    None => (),
+                if let Some(nxt_pl) = flow.index.get(&stage.name) {
+                    (*stage).pl_ptr = Some(*nxt_pl);
                 }
             }
         }
         
+        // Light the blue touch-paper!
         flow.execute(&self, &mut symbols, log);
 
         env::set_current_dir(&cwd).unwrap_or_else( | _ | { 

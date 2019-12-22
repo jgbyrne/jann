@@ -203,17 +203,14 @@ fn execute_stmts<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
                                  &deploy_children[1].tok);
                 }
 
-                match node.ptn.nt {
-                    PTNodeType::INSERT => {
-                        let entity = if let Some(parent) = src_buf.parent() {
-                            src_buf.strip_prefix(parent).unwrap()
-                        }
-                        else {
-                            &src_buf
-                        };
-                        dst_buf = PathBuf::from("/").join(dst_buf.join(entity));
-                    },
-                    _ => (),
+                if node.is_type(&PTNodeType::INSERT) {
+                    let entity = if let Some(parent) = src_buf.parent() {
+                        src_buf.strip_prefix(parent).unwrap()
+                    }
+                    else {
+                        &src_buf
+                    };
+                    dst_buf = PathBuf::from("/").join(dst_buf.join(entity));
                 }
 
                 if let Err(result) = {
