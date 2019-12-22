@@ -98,6 +98,8 @@ impl<'inv, 'src: 'inv> Pipeline<'src> {
 
                             // Now we can create a new jann process to run the included file
                             // Note that the included file recieves no state
+                            
+                            let optstr = inv.opts.dump();
 
                             let incl_msg = format!("********** Include: {}::{} *********", &file, &entry);
                             println!("\n{}", incl_msg);
@@ -107,6 +109,7 @@ impl<'inv, 'src: 'inv> Pipeline<'src> {
                                     .current_dir(&inv.root)
                                     .arg(binary)
                                     .arg(jannfile)
+                                    .args(optstr)
                                     .arg("--execute")
                                     .arg(entry)
                                     .spawn()
@@ -116,6 +119,7 @@ impl<'inv, 'src: 'inv> Pipeline<'src> {
                                 Command::new(binary)
                                     .current_dir(&inv.root)
                                     .arg(file)
+                                    .args(optstr)
                                     .arg("--execute")
                                     .arg(entry)
                                     .spawn()

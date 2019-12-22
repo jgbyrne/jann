@@ -14,6 +14,9 @@ pub enum Reference {
 
     // --execute
     PIPELINE(String),
+
+    // --allow, --forbid
+    FLAG(String),
 }
 
 pub type Switches = Vec<(String, Vec<Reference>)>; 
@@ -25,8 +28,14 @@ pub enum Command {
     DO_FILE { switches: Switches, file: String },
 }
 
+fn is_verb(s: &str) -> bool {
+    match s {
+        "execute" | "allow" | "forbid" | "enable" | "disable" => true,
+        _ => false,
+    }
+}
 
-fn parse_switches(args : env::Args) -> Switches {
+fn parse_switches(args : env::Args) -> Result<Switches, Command> {
     let mut switches = Switches::new();
     let mut cur_verb : Option<String> = None;
     let mut cur_args = vec![];
@@ -36,7 +45,11 @@ fn parse_switches(args : env::Args) -> Switches {
                 switches.push((verb.to_string(), cur_args));
                 cur_args = vec![];
             }
-            cur_verb = Some(arg.split_off(2).to_string());
+            let cv = arg.split_off(2).to_string();
+            if !is_verb(&cv) {
+                return Err(Command::HELP { code: 64 });
+            }
+            cur_verb = Some(cv);
         }
         else {
             match cur_verb {
@@ -48,7 +61,10 @@ fn parse_switches(args : env::Args) -> Switches {
                     if verb == "execute" {
                         cur_args.push(Reference::PIPELINE(arg));
                     }
-                    else {
+                    else if verb == "allow" || verb == "forbid" {
+                        cur_args.push(Reference::FLAG(arg))
+                    }
+                    else if verb == "enable" || verb == "disable" {
                         if arg == "*" {
                             cur_args.push(Reference::ALL);
                         }
@@ -74,6 +90,9 @@ fn parse_switches(args : env::Args) -> Switches {
                             }
                         }
                     }
+                    else {
+                        return Err(Command::HELP { code: 64 });
+                    }
                 }
             }
         }
@@ -83,7 +102,7 @@ fn parse_switches(args : env::Args) -> Switches {
         switches.push((verb, cur_args));
     }
 
-    switches
+    Ok(switches)
 }
 
 impl Command {
@@ -93,10 +112,24 @@ impl Command {
         match args.next() {
             Some(ref arg) => {
                 match arg.as_ref() {
-                    "--version" => Command::VERSION { code: 0 },
-                    "--help" => Command::HELP { code: 64 },
-                    "--" => Command::DO_STDIN { switches: parse_switches(args) },
-                    _ => Command::DO_FILE { switches: parse_switches(args), file: arg.clone() }
+                    "--version" => { return Command::VERSION { code: 0 }; },
+                    "--help" => { return Command::HELP { code: 64 }; },
+                    _ => (),
+                }
+
+                match parse_switches(args) {
+                    Ok(sw) => {
+                        if arg == "--" {
+                            return Command::DO_STDIN { switches: sw };
+                        }
+                        else {
+                            return Command::DO_FILE { switches: sw, file: arg.clone() };
+                        }
+                    },
+                    Err(com) => {
+                        println!("Invalid command");
+                        return com;
+                    }
                 }
             },
             None => Command::HELP { code: 64 },

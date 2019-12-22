@@ -43,6 +43,19 @@ impl DepOpt {
             }
         }
     }
+
+    pub fn dump(&self) -> Vec<&'static str> {
+        let mut allows = vec!["--allow"];
+        let mut forbids = vec!["--forbid"];
+        if self.OW_FF { allows.push("ff"); } else { forbids.push("ff"); }
+        if self.OW_DD { allows.push("dd"); } else { forbids.push("dd"); }
+        if self.OW_DF { allows.push("df"); } else { forbids.push("df"); }
+        if self.OW_FD { allows.push("fd"); } else { forbids.push("fd"); }
+        if self.INTER { allows.push("inter"); } else { forbids.push("inter"); }
+
+        allows.extend(forbids);
+        allows
+    }
 }
 
 #[derive(PartialEq, Debug)]
@@ -161,6 +174,9 @@ pub fn deploy(src: PathBuf, src_ent: Entity, dst: PathBuf, opt: DepOpt) -> Resul
                     copy_dir(&src, &dst)?;
                 }
             }
+        }
+        else {
+            return Err(DeployError::locked("Deploy", "Options disallow this copy"));
         }
     }
     else {

@@ -75,13 +75,45 @@ fn main() {
     //tree.print_tree();
     
     /* Get entry-point */
-    
+
     let mut pl_name = String::from("main");
+    let mut opts = deploy::DepOpt { OW_FF: true, OW_DD: true, OW_FD: false, OW_DF: true, INTER: true};
     for (com, refs) in &switches {
-        if com == "execute" {
-            if let Some(com::Reference::PIPELINE(pl)) = refs.get(0) {
-                pl_name = pl.to_string();
-            }
+        match (*com).as_ref() {
+            "execute" => {
+                if let Some(com::Reference::PIPELINE(pl)) = refs.get(0) {
+                    pl_name = pl.to_string();
+                }
+            },
+            "allow" => {
+                for r in refs {
+                    if let com::Reference::FLAG(r) = r {
+                        match r.to_lowercase().as_ref() {
+                            "ff" => {opts.OW_FF = true;},
+                            "dd" => {opts.OW_DD = true;},
+                            "fd" => {opts.OW_FD = true;},
+                            "df" => {opts.OW_DF = true;},
+                            "inter" => {opts.OW_DF = true;},
+                            _ => (),
+                        }
+                    }
+                }
+            },
+            "forbid" => {
+                 for r in refs {
+                    if let com::Reference::FLAG(r) = r {
+                         match r.to_lowercase().as_ref() {
+                            "ff" => {opts.OW_FF = false;},
+                            "dd" => {opts.OW_DD = false;},
+                            "fd" => {opts.OW_FD = false;},
+                            "df" => {opts.OW_DF = false;},
+                            "inter" => {opts.OW_DF = false;},
+                            _ => (),
+                        }
+                    }
+                }
+            },
+            _ => (),
         }
     }
 
@@ -94,7 +126,7 @@ fn main() {
     let inv = invoke::Invocation {
         root: cwd,
         edir,
-        opts: deploy::DepOpt { OW_FF: true, OW_DD: true, OW_FD: false, OW_DF: true, INTER: true },
+        opts,
         pl_name,
         art: art,
         switches: switches,
