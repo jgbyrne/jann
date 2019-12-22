@@ -126,6 +126,24 @@ This might lead you to the natural question - what is a tag? Good question! Tags
 
 In this example, `important` and `destructive` are tags.
 
+**Options**
+
+`jann` features a fine-grained options system which allows control over the extent to which your filesystem can be modified.
+
+It features the following flags:
+
+* FF - Files can be overwritten by Files
+* DD - Directories can be overwritten by Directories
+* DF - Directories can be overwritten by Files
+* FD - Files can be overwritten by Directories
+* INTER - Intermediate directories can be created to complete a copy
+
+These flags can be turned on and off with the `--allow` and `--forbid` switches. For example:
+
+    jann Jannfile --allow FF DD --disallow DF FD INTER
+
+These chosen options propogate to any auxilliary Jannfiles included with directives (see below).
+
 **Includes**
 
 It is possible to bring references to other Jannfiles into the namespace. This may be desirable for the sake of modularity, or to allow certain instructions to run as root.
