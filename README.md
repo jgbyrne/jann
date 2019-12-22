@@ -1,6 +1,6 @@
 ## jann
 
-**Disclaimer: `jann` is alpha software. I implore you not to test it on any system that matters. `jann` is a penknife not a butter knife, and can overwrite important data with ease.**
+*Disclaimer: `jann` is alpha software. I implore you not to test it on any system that matters. `jann` is a penknife not a butter knife, and can overwrite important data with ease.*
 
 `jann` is a configuration deployment utility for \*nix operating systems.
 
