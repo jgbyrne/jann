@@ -21,7 +21,7 @@ A typical `jann` bundle might look something like this:
        wallpaper.png
 ```
 
-The simply, readable `Jannfile` would then be as follows:
+The simple, readable `Jannfile` would then be as follows:
 
 ```
    console {
