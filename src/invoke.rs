@@ -26,6 +26,8 @@ struct PipelineStage<'src> {
     pl_ptr: Option<usize>
 }
 
+// A Pipeline is a sequence of executable stages
+
 #[derive(Debug)]
 struct Pipeline<'src> {
     name  : &'src str,
@@ -33,6 +35,8 @@ struct Pipeline<'src> {
 }
 
 impl<'inv, 'src: 'inv> Pipeline<'src> {
+
+    // Execute a Pipeline
     fn execute(flow: &mut Workflow,
                pl_self: usize,
                inv: &Invocation<'src>,
@@ -40,43 +44,69 @@ impl<'inv, 'src: 'inv> Pipeline<'src> {
                log: &mut util::Log<'src>,
                tab: usize,
                ) {
+
+        // Tabbing allows better logging of nested Pipelines
         let tabs = "\t".repeat(tab);
         println!("[Execute] {}{}", tabs, &flow.lines[pl_self].name);
+
+        // Iterate through own stages
         for st_index in 0..flow.lines[pl_self].stages.len() {
+
+            // Bypass disabled stages
             if !flow.lines[pl_self].stages[st_index].enabled {
                 println!("[ Ignore] {} : {}", tabs, flow.lines[pl_self].stages[st_index].name);
                 continue;
             }
 
+            // If it's a pointer to another Pipeline, execute that
+            // Note that we increment the tab count
             if let Some(ptr) = flow.lines[pl_self].stages[st_index].pl_ptr {
                 println!("[Running] {} | {}", tabs, flow.lines[pl_self].stages[st_index].name);
                 Pipeline::execute(flow, ptr, inv, symbols, log, tab + 1);
             }
             else {
+                // If it's not a Pipeline it's either a block or an external reference
                 let name = &flow.lines[pl_self].stages[st_index].name;
+
+                // Checking the run-state prevents a block from being run twice
                 match flow.lines[pl_self].stages[st_index].state {
                     RunState::NOTRUN => {
+                        // It's not been run before so we execute it
                         println!("[Execute] {} | {}", tabs, name);
+
+                        // If it's a block, we execute it
                         if let Some(block_id) = symbols.blocks.get(name) {
                             let mut node: inter::LinkNode = inv.art.node(*block_id);
                             exec::execute_block(inv, symbols, log, &node);
                         }
+                        
+                        // Otherwise, it might be an 'include' - a reference to an external file
                         else if let Some((file, entry, sudo)) = symbols.includes.get(*name) {
-                            let file = inv.root.join(file).into_os_string().into_string().unwrap_or_else( |_| {
+
+                            // We try and build the path to the other Jannfile 
+                            let jannfile = inv.root.join(file).into_os_string().into_string();
+                            let jannfile = jannfile.unwrap_or_else( |_| {
                                 log.sys_terminal(&format!("Unable to handle file path {}", file));
                             });
+
+                            // We also try and get a path to our own binary
                             let binary = env::current_exe().unwrap_or_else( |_| {
                                 log.sys_terminal(&format!("Unable to get jann binary path"));
                             }).into_os_string().into_string().unwrap_or_else( |_| {
                                 log.sys_terminal(&format!("Unable to handle binary path"));
                             });
+
+                            // Now we can create a new jann process to run the included file
+                            // Note that the included file recieves no state
+
                             let incl_msg = format!("--- Include: {}::{} ---", &file, &entry);
                             println!("{}", incl_msg);
+                            
                             let mut proc = if *sudo {
                                 Command::new("sudo")
                                     .current_dir(&inv.root)
                                     .arg(binary)
-                                    .arg(file)
+                                    .arg(jannfile)
                                     .arg("--execute")
                                     .arg(entry)
                                     .spawn()
@@ -91,14 +121,18 @@ impl<'inv, 'src: 'inv> Pipeline<'src> {
                                     .spawn()
                                     .expect("Failed to run included Jannfile")
                             };
+                            
                             if !proc.wait().expect("Failed to wait on Jann").success() {
                                 println!("{}", "-".repeat(incl_msg.len()));
                                 log.die();
                             };
+                            
                             println!("{}", "-".repeat(incl_msg.len()));
                         }
+
+                        // There's nothing to run with this name
                         else {
-                            log.sys_terminal(&format!("No such block {}", name));
+                            log.sys_terminal(&format!("No such block or pipeline {}", name));
                         }
                     },
                     RunState::DONE   => {
@@ -111,10 +145,11 @@ impl<'inv, 'src: 'inv> Pipeline<'src> {
     }
 }
 
+// A workflow is a set of indexed Pipelines
+
 struct Workflow<'src> {
     lines: Vec<Pipeline<'src>>,
     index : HashMap<&'src str, usize>,
-    // filepath?
 }
 
 impl<'inv, 'src: 'inv> Workflow<'src> {
@@ -130,6 +165,7 @@ impl<'inv, 'src: 'inv> Workflow<'src> {
     }
 }
 
+// Encapsulates all the data pertaining to an invocation of a Jannfile
 pub struct Invocation<'src> {
     pub root : PathBuf,
     pub edir : PathBuf,
