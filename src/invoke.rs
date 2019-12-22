@@ -99,8 +99,8 @@ impl<'inv, 'src: 'inv> Pipeline<'src> {
                             // Now we can create a new jann process to run the included file
                             // Note that the included file recieves no state
 
-                            let incl_msg = format!("--- Include: {}::{} ---", &file, &entry);
-                            println!("{}", incl_msg);
+                            let incl_msg = format!("********** Include: {}::{} *********", &file, &entry);
+                            println!("\n{}", incl_msg);
                             
                             let mut proc = if *sudo {
                                 Command::new("sudo")
@@ -123,11 +123,11 @@ impl<'inv, 'src: 'inv> Pipeline<'src> {
                             };
                             
                             if !proc.wait().expect("Failed to wait on Jann").success() {
-                                println!("{}", "-".repeat(incl_msg.len()));
+                                println!("{}", "*".repeat(incl_msg.len()));
                                 log.die();
                             };
                             
-                            println!("{}", "-".repeat(incl_msg.len()));
+                            println!("{}\n", "*".repeat(incl_msg.len()));
                         }
 
                         // There's nothing to run with this name
