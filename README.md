@@ -41,7 +41,7 @@ The simple, readable `Jannfile` would then be as follows:
      | graphical
 ```
 
-The deployment could then be simple command `jann Jannfile`.
+The deployment may be completed in one simple command `jann Jannfile`.
 
 Note the two key structures here, **blocks** - named sequences of instructions surrounded by curly braces, and **pipelines** - named sequences of blocks (or other pipelines) to be run consecutively. The default pipeline is `main` - a different entry point can be specified with `--execute <pipeline>`.
 
