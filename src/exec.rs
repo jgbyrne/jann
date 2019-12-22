@@ -30,7 +30,7 @@ fn interpolate<'inv, 'src: 'inv>(log: &mut util::Log<'src>,
     for c in base.chars() {
         if ex == RBRACE {
             if c != '}' {
-                panic!("Malformed command");
+                log.terminal("Expected right brace", "Missing right brace", &node.tok);
             }
             ex = NONE;
             continue;
@@ -48,7 +48,8 @@ fn interpolate<'inv, 'src: 'inv>(log: &mut util::Log<'src>,
                     outstr.push_str(v);
                 }
                 else {
-                    panic!("Only strings can be interpolated into commansd");
+                    log.terminal("Only strings can be interpolated into commands",
+                                 &format!("Change the type of variable {}", name.trim()), &node.tok);
                 }
                 name = "".to_string();
                 ex = RBRACE;
@@ -82,6 +83,10 @@ fn interpolate<'inv, 'src: 'inv>(log: &mut util::Log<'src>,
         if esc { esc = false; }
 
         outstr.push(c);
+    }
+
+    if ex != NONE {
+        log.terminal("Bad interpolation syntax", "Make sure all braces are matched", &node.tok);
     }
 
     outstr

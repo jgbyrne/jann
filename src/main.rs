@@ -14,6 +14,8 @@ mod inter;
 mod deploy;
 
 fn main() {
+    /* Parse command line arguments */
+    
     let command = com::Command::new();
 
     let (lines, switches, job) = match command {
@@ -42,9 +44,12 @@ fn main() {
         },
     };
 
-    //println!("Switches: {:?}", switches);
+    // println!("Switches: {:?}", switches);
+    
 
     let mut log = util::Log::new(job, &lines);
+
+    /* Tokenise input data */
 
     let mut toks = vec![];
 
@@ -57,13 +62,19 @@ fn main() {
     if log.has_err() {
         log.conclude();
     }
+    
     //println!("{:#?}", &toks);
+    
+    /* Create parse tree for input data */
 
     let tree = parse::parse(&mut log, &toks);
     if log.has_err() {
         log.conclude();
     }
+    
     //tree.print_tree();
+    
+    /* Get entry-point */
     
     let mut pl_name = String::from("main");
     for (com, refs) in &switches {
@@ -74,9 +85,12 @@ fn main() {
         }
     }
 
+    /* Execute parsed Jannfile */
+
     let art = inter::Artifact::new(&toks, &tree);
     let cwd = env::current_dir().expect("Could not get cwd"); 
-    let edir = cwd.join("deploy");
+    // use ./deploy as execution directory for now
+    let edir = cwd.join("deploy"); 
     let inv = invoke::Invocation {
         root: cwd,
         edir,
@@ -86,6 +100,7 @@ fn main() {
         switches: switches,
     };
     inv.invoke(&mut log);
+
     log.conclude();
 }
 

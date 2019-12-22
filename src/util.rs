@@ -53,14 +53,17 @@ impl<'src> Log<'src> {
 
     pub fn terminal(&mut self, msg: &str, hint: &str, tok: &Token) -> ! {
         self.message("error", msg, hint, tok);
-        self.err_count += 1;
-        self.conclude();
+        self.die();
     }
 
     pub fn sys_terminal(&mut self, msg: &str) -> ! {
         println!("error: {}", msg);
+        self.die();
+    }
+
+    pub fn die(&mut self) -> ! {
         self.err_count += 1;
-        self.conclude();
+        self.conclude()
     }
 }
 

@@ -62,8 +62,14 @@ impl<'inv, 'src: 'inv> Pipeline<'src> {
                             exec::execute_block(inv, symbols, log, &node);
                         }
                         else if let Some((file, entry, sudo)) = symbols.includes.get(*name) {
-                            let file = inv.root.join(file).into_os_string().into_string().unwrap();
-                            let binary = env::current_exe().unwrap().into_os_string().into_string().unwrap();
+                            let file = inv.root.join(file).into_os_string().into_string().unwrap_or_else( |_| {
+                                log.sys_terminal(&format!("Unable to handle file path {}", file));
+                            });
+                            let binary = env::current_exe().unwrap_or_else( |_| {
+                                log.sys_terminal(&format!("Unable to get jann binary path"));
+                            }).into_os_string().into_string().unwrap_or_else( |_| {
+                                log.sys_terminal(&format!("Unable to handle binary path"));
+                            });
                             let incl_msg = format!("--- Include: {}::{} ---", &file, &entry);
                             println!("{}", incl_msg);
                             let mut proc = if *sudo {
@@ -85,7 +91,10 @@ impl<'inv, 'src: 'inv> Pipeline<'src> {
                                     .spawn()
                                     .expect("Failed to run included Jannfile")
                             };
-                            proc.wait().expect("Failed to wait on Jann");
+                            if !proc.wait().expect("Failed to wait on Jann").success() {
+                                println!("{}", "-".repeat(incl_msg.len()));
+                                log.die();
+                            };
                             println!("{}", "-".repeat(incl_msg.len()));
                         }
                         else {
@@ -227,7 +236,10 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
                 let mut stages = vec![];
 
                 for stage in pl_list.children() {
-                    stage.expect_type(&PTNodeType::NAME);
+                    if !stage.is_type(&PTNodeType::NAME) {
+                        log.error("Invalid stage name", "Make this a name", stage.tok);
+                        continue;
+                    }
                     if !util::check_name(stage.token_value()) {
                         log.error("Invalid stage name", "Make this a valid stage name", stage.tok);
                         continue;
