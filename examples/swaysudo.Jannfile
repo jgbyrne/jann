@@ -1,0 +1,6 @@
+deploy {
+    rofi/nasa.rasi => /usr/share/rofi/themes
+}
+
+main
+  | deploy

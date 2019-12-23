@@ -1,0 +1,28 @@
+// A Jannfile for a typical Sway based system
+// Actual configuration files not included in this example
+
+#sudo_include [swaysudo.Jannfile, privileged]
+
+deploy {
+    rofi/config => ~/.config/rofi/
+
+    termite/config   => ~/.config/termite
+    
+    sway/config => ~/.config/sway/
+
+    mako/config => ~/.config/mako
+
+    waybar/ >> ~/.config/waybar
+
+    misc/wallpaper.jpg >> ~/pic/wallpaper
+}
+
+refresh {
+    $ swaymsg reload
+    $ killall -USR1 termite
+}
+
+main
+  | deploy
+  | privileged
+  | refresh
