@@ -47,6 +47,8 @@ Note the two key structures here, **blocks** - named sequences of instructions s
 
 Note also the two different types of arrows used to represent two different types of copy operations - insertion copies, where the left path is copied into the right path, and 'splatting' copies, where the left path is copied directly onto the right path.
 
+Something important to note here is that when a directory is copied on top of another folder in `jann`, the original folder is completely deleted. This is a deliberate choice, but one which I realise goes against the behaviour of traditional tools and as such could catch the unwary user out. You can prevent any directories being overwritten with the switch `--forbid DD FD` - more on that later. 
+
 This brief example does not cover much of `jann`'s functionality. Here are some examples of other features of `jann`.
 
 **Variables**
