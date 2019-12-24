@@ -206,6 +206,27 @@ pub fn execute_block<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
             let name  = &node.children()[1];
             
         },
+        PTNodeType::CD => {
+            let cd = &block_children[0];
+            let pval = &cd.children()[0];
+            if let inter::Value::Str(path) = inter::load_value(symbols, pval) {
+                let path = inter::interpolate(log, symbols, &path, pval);
+                let cur = env::current_dir().unwrap();
+                let path = cur.join(path);
+                if path.is_dir() {
+                    if let Ok(_) = env::set_current_dir(path) {
+                        execute_stmts(inv, symbols, log, block_children.iter().skip(1).collect()); 
+                    }
+                    else {
+                        log.terminal("Could not set working directory", "Make this an accessible directory", pval.tok);
+                    }
+                }
+                else {
+                    log.terminal("Could not set working directory", "Make this an extant directory", pval.tok);
+                }
+                env::set_current_dir(cur);
+            }
+        }
         _ => { log.terminal("Invalid Block Tag", "Replace this with a name or a mapping", &tag.tok); },
     }
 }

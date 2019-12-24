@@ -216,7 +216,7 @@ pub fn load_value<'old, 'src: 'old>(symbols: &Symbols<'src>,
             }
             Value::List(vals)
         },
-        _ => { panic!("Bad Value"); }
+        _ => { panic!(format!("Bad Value {:?}", node.ptn.nt)); }
     }
 }
 

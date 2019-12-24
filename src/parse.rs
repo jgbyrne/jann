@@ -264,6 +264,7 @@ pub enum PTNodeType {
     ROOT   ,
     BLOCK  ,   // name { }
     MAP    ,   // [a, b, c] -> d { }
+    CD     ,   // path -> { }
     ASSIGN ,   // foo = bar
     COMMAND,   // $ echo foo
     DIRECTIVE, // # include bar::spqr
@@ -610,9 +611,21 @@ fn parse_val_stmt(parser: &mut Parser) -> Option<usize> {
             Some(stmt)
         },
         TokenType::ARROW  => {
+            parser.step_or_err("Bare arrow", "Cannot conclude here")?;
+            
+            match parser.tok().tt {
+                TokenType::LBRACE => {
+                    let cd = parser.orphan(PTNodeType::CD, tok_id);
+                    parser.tree.bind_child(cd, val);
+                    return Some(parse_block(parser, cd)?);
+                },
+                _ => (),
+            }
+
             let map = parser.orphan(PTNodeType::MAP, tok_id);
             parser.tree.bind_child(map, val);
-            parser.step_or_err("Bare arrow", "Cannot conclude here")?;
+
+
             let rval = parse_val(parser)?;
             parser.tree.bind_child(map, rval);
             

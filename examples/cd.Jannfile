@@ -1,0 +1,9 @@
+test {
+    $ mkdir bar
+    bar/ -> {
+        $ touch baz
+    }
+    $ touch spqr
+}
+
+main | test
