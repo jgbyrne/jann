@@ -3,14 +3,16 @@
 
 void {
     @command = "sudo xbps-install"
+    @install = [sway, rofi, mako]
 }
 
 arch {
     @command = "sudo pacman -S"
+    @install = [sway, rofi, mako, termite]
 }
 
 install {
-    [sway, rofi, termite] -> p {
+    @install -> p {
         $ {{command}} {{p}}
     }
 }

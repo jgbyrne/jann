@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use parse::{ParseTree, ParseTreeNode, PTNodeType, Token, TokenType};
+use util;
 
 #[derive(Clone, Debug)]
 pub enum Value<'src> {
@@ -91,6 +92,100 @@ impl<'int, 'src: 'int> Artifact<'src> {
         let ptn = &self.tree.get_node(n);
         LinkNode { int: &self, tok: &(self.toks[ptn.tok_id - 1]), ptn: ptn }
     }
+}
+
+pub fn check_name(name: &str) -> bool {
+    let re = regex::Regex::new(r"^[a-zA-Z0-9_]*$").unwrap();
+    re.is_match(name)
+}
+
+// Substitute variable names from the symbol table
+// Used for shell command statements and also other value strings
+
+pub fn interpolate<'inv, 'src: 'inv>(log: &mut util::Log<'src>,
+                                     symbols: &Symbols<'src>,
+                                     base: &'inv str,
+                                     node: &LinkNode<'inv, 'src>) -> String {
+    // A mini enumeration of parsing states
+    let NONE = 0;
+    let LBRACE = 1;
+    let RBRACE = 2;
+    let WITHIN = 3;
+    // Expecting Escape
+    let mut esc = false;
+    // Expected State
+    let mut ex = NONE;
+
+    // The final string is built into outstr
+    let mut outstr: String = "".to_string();
+
+    // Name stores interpolation variables as they are parsed
+    let mut name: String = "".to_string();
+
+    // We parse on a char-by-char basis
+    for c in base.chars() {
+        if ex == RBRACE {
+            if c != '}' {
+                log.terminal("Expected right brace", "Missing right brace", &node.tok);
+            }
+            ex = NONE;
+            continue;
+        }
+
+        if ex == WITHIN {
+            if c == '}' {
+                let val = symbols.names.get(name.trim()).unwrap_or_else( || {
+                    symbols.jnames.get(name.trim()).unwrap_or_else( || {
+                        log.terminal(&format!("No such variable {}", name),
+                                     "Ensure interpolation uses extant, in-scope variables", &node.tok);
+                    })
+                });
+                if let Value::Str(ref v) = val  {
+                    outstr.push_str(v);
+                }
+                else {
+                    log.terminal("Only strings can be interpolated into commands",
+                                 &format!("Change the type of variable {}", name.trim()), &node.tok);
+                }
+                name = "".to_string();
+                ex = RBRACE;
+                continue;
+            }
+            name.push(c);
+            continue;
+        }
+
+        if ex == LBRACE {
+            if c == '{' {
+                ex = WITHIN;
+                continue;
+            }
+            else {
+                ex = NONE;
+                outstr.push_str("{");
+            }
+        
+        }
+
+        if c == '\\' && !esc {
+            esc = true;
+            continue;
+        }
+        if c == '{' && !esc {
+           ex = LBRACE;
+           continue;
+        }
+
+        if esc { esc = false; }
+
+        outstr.push(c);
+    }
+
+    if ex != NONE {
+        log.terminal("Bad interpolation syntax", "Make sure all braces are matched", &node.tok);
+    }
+
+    outstr
 }
 
 pub fn load_value<'old, 'src: 'old>(symbols: &Symbols<'src>,

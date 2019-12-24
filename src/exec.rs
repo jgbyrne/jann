@@ -13,97 +13,6 @@ use inter;
 use util;
 use parse;
 
-// Substitute variable names from the symbol table
-// Used for shell command statements and also other value strings
-
-fn interpolate<'inv, 'src: 'inv>(log: &mut util::Log<'src>,
-                                 symbols: &mut inter::Symbols<'src>,
-                                 node: &inter::LinkNode<'inv, 'src>) -> String {
-    let base = node.token_value();
-
-    // A mini enumeration of parsing states
-    let NONE = 0;
-    let LBRACE = 1;
-    let RBRACE = 2;
-    let WITHIN = 3;
-    // Expecting Escape
-    let mut esc = false;
-    // Expected State
-    let mut ex = NONE;
-
-    // The final string is built into outstr
-    let mut outstr: String = "".to_string();
-
-    // Name stores interpolation variables as they are parsed
-    let mut name: String = "".to_string();
-
-    // We parse on a char-by-char basis
-    for c in base.chars() {
-        if ex == RBRACE {
-            if c != '}' {
-                log.terminal("Expected right brace", "Missing right brace", &node.tok);
-            }
-            ex = NONE;
-            continue;
-        }
-
-        if ex == WITHIN {
-            if c == '}' {
-                let val = symbols.names.get(name.trim()).unwrap_or_else( || {
-                    symbols.jnames.get(name.trim()).unwrap_or_else( || {
-                        log.terminal(&format!("No such variable {}", name),
-                                     "Ensure interpolation uses extant, in-scope variables", &node.tok);
-                    })
-                });
-                if let inter::Value::Str(ref v) = val  {
-                    outstr.push_str(v);
-                }
-                else {
-                    log.terminal("Only strings can be interpolated into commands",
-                                 &format!("Change the type of variable {}", name.trim()), &node.tok);
-                }
-                name = "".to_string();
-                ex = RBRACE;
-                continue;
-            }
-            name.push(c);
-            continue;
-        }
-
-        if ex == LBRACE {
-            if c == '{' {
-                ex = WITHIN;
-                continue;
-            }
-            else {
-                ex = NONE;
-                outstr.push_str("{");
-            }
-        
-        }
-
-        if c == '\\' && !esc {
-            esc = true;
-            continue;
-        }
-        if c == '{' && !esc {
-           ex = LBRACE;
-           continue;
-        }
-
-        if esc { esc = false; }
-
-        outstr.push(c);
-    }
-
-    if ex != NONE {
-        log.terminal("Bad interpolation syntax", "Make sure all braces are matched", &node.tok);
-    }
-
-    outstr
-}
-
-
 fn component_string(c: &Component) -> String {
     c.as_os_str().to_string_lossy().to_string()
 }
@@ -121,7 +30,7 @@ fn command<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
         }
     };
 
-    let outcom = interpolate(log, symbols, node);
+    let outcom = inter::interpolate(log, symbols, node.token_value(), node);
     println!(">>> {}", outcom);
     
     let mut proc = Command::new(&shell)
@@ -143,7 +52,7 @@ fn execute_stmts<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
             PTNodeType::ASSIGN => {
                 let rval = inter::load_value(symbols, &node.children()[1]);
                 let lval = &node.children()[0];
-                if util::check_name(lval.token_value()) {
+                if inter::check_name(lval.token_value()) {
                     if lval.is_type(&PTNodeType::NAME) {
                         scope_names.push(lval.token_value());
                         symbols.names.insert(lval.token_value(), rval);
@@ -161,7 +70,10 @@ fn execute_stmts<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
             },
             PTNodeType::COPY | PTNodeType::INSERT => {
                 let deploy_children = &node.children();
-                let src_buf = PathBuf::from(interpolate(log, symbols, &deploy_children[0]));
+                let src_buf = PathBuf::from(inter::interpolate(log,
+                                                               symbols,
+                                                               &deploy_children[0].token_value(),
+                                                               &deploy_children[0]));
 
                 let comps: Vec<Component> = src_buf.components().collect();
 
@@ -184,7 +96,10 @@ fn execute_stmts<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
                                  "Make this a valid path", &deploy_children[0].tok);
                 }
                 
-                let mut dst_buf = PathBuf::from(interpolate(log, symbols, &deploy_children[1]));
+                let mut dst_buf = PathBuf::from(inter::interpolate(log,
+                                                                   symbols,
+                                                                   &deploy_children[1].token_value(),
+                                                                   &deploy_children[1]));
 
                 let dst_cpy = dst_buf.clone();
                 let dst_comps: Vec<Component> = dst_cpy.components().collect();
@@ -255,7 +170,7 @@ pub fn execute_block<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
 
     match tag.ptn.nt {
         PTNodeType::NAME => {
-            if util::check_name(tag.token_value()) {
+            if inter::check_name(tag.token_value()) {
                 execute_stmts(inv, symbols, log, block_children.iter().skip(1).collect());
             }
             else {
@@ -267,9 +182,14 @@ pub fn execute_block<'inv, 'src: 'inv>(inv: &invoke::Invocation<'src>,
             let map_children = map.children();
             if let inter::Value::List(vlist) = inter::load_value(symbols, &map_children[0]) {
                 let name = map_children[1].token_value();
-                if util::check_name(name) {
+                if inter::check_name(&name) {
                     for elem in vlist {
-                        symbols.names.insert(name, elem);
+                        let elem = if let inter::Value::Str(ref s) = elem {
+                            inter::Value::Str(inter::interpolate(log, symbols, s, map))
+                        } else {
+                            elem
+                        };
+                        symbols.names.insert(&name, elem);
                         execute_stmts(inv, symbols, log, block_children.iter().skip(1).collect());
                     }
                     symbols.names.remove(name);

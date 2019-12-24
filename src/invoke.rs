@@ -290,7 +290,7 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
 
                 let pl_name = &pl_children[0].token_value();
 
-                if !util::check_name(pl_name) {
+                if !inter::check_name(pl_name) {
                     log.error("Invalid pipeline name", "Make this a valid pipeline name", &pl_children[0].tok);
                     continue;
                 }
@@ -303,7 +303,7 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
                         log.error("Invalid stage name", "Make this a name", stage.tok);
                         continue;
                     }
-                    if !util::check_name(stage.token_value()) {
+                    if !inter::check_name(stage.token_value()) {
                         log.error("Invalid stage name", "Make this a valid stage name", stage.tok);
                         continue;
                     }

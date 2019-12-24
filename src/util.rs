@@ -66,8 +66,3 @@ impl<'src> Log<'src> {
         self.conclude()
     }
 }
-
-pub fn check_name(name: &str) -> bool {
-    let re = regex::Regex::new(r"^[a-zA-Z0-9_]*$").unwrap();
-    re.is_match(name)
-}
