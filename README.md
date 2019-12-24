@@ -64,6 +64,11 @@ This brief example does not cover much of `jann`'s functionality. Here are some 
    bar {
      // Will echo Hello
      $ echo {{glob}}
+
+     // Will also echo Hello
+     loc2 = @glob
+     $ echo {{loc2}}
+
      // Not gonna work!
      $ echo {{loc}}
    }
