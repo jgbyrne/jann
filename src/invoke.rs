@@ -205,6 +205,15 @@ impl<'inv, 'src: 'inv> Invocation<'src> {
 
         let mut symbols = inter::Symbols::new();
 
+        // Pre-populate symbol table with relevant directory path
+        
+        symbols.jnames.insert("BUNDLE", inter::Value::Str(self.root.clone()
+                                                                   .into_os_string()
+                                                                   .into_string()
+                                                                   .unwrap_or_else( | _ | {
+                                 log.sys_terminal("Unable to handle bundle path");                            
+                             })));
+
         let root = self.art.root();
         let mut flow = Workflow::new();
 
