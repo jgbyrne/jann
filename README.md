@@ -90,7 +90,7 @@ Maps allow the same instructions to be performed on a range of values.
 
 ```
    colours {
-     ["redfile", "bluefile", "greenfile"] <- c {
+     ["redfile", "bluefile", "greenfile"] -> c {
          "{{c}}" => ~/colourfiles/
      }
    }
