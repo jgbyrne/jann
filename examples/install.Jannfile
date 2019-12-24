@@ -1,0 +1,21 @@
+// Jann can also be a neat way to install programs!
+// Use --enable switches to select a distro
+
+void {
+    @command = "sudo xbps-install"
+}
+
+arch {
+    @command = "sudo pacman -S"
+}
+
+install {
+    [sway, rofi, termite] -> p {
+        $ {{command}} {{p}}
+    }
+}
+
+main
+    : void
+    : arch
+    | install
