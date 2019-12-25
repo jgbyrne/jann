@@ -1,0 +1,91 @@
+// A Jannfile to install a Wayland desktop from source
+// wlroots, sway, mako, and rofi are built and installed
+
+init_ubuntu {
+    @install = "sudo apt install"
+    [git, meson] -> p {
+      $ {{install}} {{p}}
+    }
+}
+
+init
+  | init_ubuntu [ubuntu]
+
+wlr_ubuntu {
+    ["libwayland-*", "wayland-protocols", "libegl1-mesa-dev", "libgles2-mesa-dev",
+     "libgbm-dev", "libinput-dev", "libxkbcommon-dev", "libpixman-1-dev",
+     "libxcb-xinput-dev", "libsystemd-dev"] -> p {
+        $ {{install}} {{p}}
+    }
+}
+
+
+wlr_build {
+    $ git clone https://github.com/swaywm/wlroots
+    wlroots/ -> {
+        $ meson build
+        $ ninja -C build
+        $ sudo ninja -C build install
+    }
+}
+
+wlroots
+  | wlr_ubuntu [ubuntu]
+  | wlr_build
+
+sway_ubuntu {
+    ["libjson-c-dev", "libcairo2-dev", "libpango1.0-dev", "libelogind-dev", "libgdk-pixbuf2.0-dev"] -> p {
+        $ {{install}} {{p}}
+    }
+}
+
+sway_build {
+    $ git clone https://github.com/swaywm/sway
+    sway/ -> {
+        $ PKG_CONFIG_PATH=/usr/local/lib64/ meson build
+        $ ninja -C build
+        $ sudo ninja -C build install
+    }
+}
+
+sway
+  | sway_ubuntu [ubuntu]
+  | sway_build
+
+rofi_ubuntu {
+    ["libgdk-pixbuf2.0-dev", "librsvg2-dev", "libxcb-util-dev", "libxcb-xkb-dev",
+     "libxkbcommon-x11-dev", "libxcb-ewmh-dev", "libxcb-icccm4-dev", "libxcb-xrm-dev",
+     "libxcb-xinerama0-dev", "libstartup-notification0-dev", "flex", "bison"] -> p {
+         $ {{install}} {{p}}
+    }
+}
+
+rofi_build {
+    $ git clone https://github.com/davatorium/rofi
+    rofi/ -> {
+        $ git submodule update --init
+        $ meson setup build
+        $ ninja -C build
+        $ sudo ninja -C build install
+    }
+}
+
+rofi
+  | rofi_ubuntu [ubuntu]
+  | rofi_build
+
+mako {
+    $ git clone https://github.com/emersion/mako
+    mako/ -> {
+        $ meson build
+        $ ninja -C build
+        $ sudo ninja -C build install
+    }
+}
+
+main
+ | init
+ | wlroots
+ | sway
+ | rofi
+ | mako
